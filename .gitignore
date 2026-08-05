@@ -1,0 +1,22 @@
+# ── SECRETS — never commit these ──
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+secrets.toml
+*.key
+*.pem
+
+# ── Virtual environments ──
+venv/
+*/venv/
+**/venv/
+.venv/
+
+# ── Python leftovers ──
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# ── Local working state ──
+pending_review/

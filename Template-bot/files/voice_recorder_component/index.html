@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: "Source Sans Pro", sans-serif;
+  }
+  #wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 4px;
+  }
+  #mic-btn {
+    border: none;
+    border-radius: 50%;
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+    cursor: pointer;
+    background: #f0f2f6;
+    color: #262730;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  #mic-btn:hover { background: #e6e9ef; }
+  #mic-btn.recording {
+    background: #ff4b4b;
+    color: white;
+    animation: pulse 1.2s infinite;
+  }
+  #mic-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255,75,75,0.5); }
+    70% { box-shadow: 0 0 0 10px rgba(255,75,75,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,75,75,0); }
+  }
+  #status {
+    font-size: 13px;
+    color: #555;
+  }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <button id="mic-btn" title="Record a question">🎤</button>
+    <span id="status">Click the mic and speak</span>
+  </div>
+
+<script>
+  // Minimal Streamlit Components v1 postMessage protocol (no external deps).
+  const STREAMLIT_MSG_PREFIX = "streamlit:";
+
+  function sendMessageToStreamlit(type, data) {
+    const outData = Object.assign({ isStreamlitMessage: true, type: STREAMLIT_MSG_PREFIX + type }, data);
+    window.parent.postMessage(outData, "*");
+  }
+
+  function initStreamlit() {
+    sendMessageToStreamlit("componentReady", { apiVersion: 1 });
+    setFrameHeight();
+  }
+
+  function setFrameHeight() {
+    const height = document.documentElement.scrollHeight;
+    sendMessageToStreamlit("setFrameHeight", { height: height });
+  }
+
+  function setComponentValue(value) {
+    sendMessageToStreamlit("setComponentValue", { value: value, dataType: "json" });
+  }
+
+  window.addEventListener("message", (event) => {
+    if (!event.data || event.data.type !== STREAMLIT_MSG_PREFIX + "render") return;
+    // No args needed from Python side; component is self-driven.
+  });
+
+  const micBtn = document.getElementById("mic-btn");
+  const statusEl = document.getElementById("status");
+
+  const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognitionImpl) {
+    micBtn.disabled = true;
+    statusEl.textContent = "Speech recognition not supported in this browser.";
+  } else {
+    const recognizer = new SpeechRecognitionImpl();
+    recognizer.lang = "en-US";
+    recognizer.interimResults = false;
+    recognizer.maxAlternatives = 1;
+
+    let recording = false;
+
+    micBtn.addEventListener("click", () => {
+      if (recording) {
+        recognizer.stop();
+        return;
+      }
+      try {
+        recognizer.start();
+      } catch (err) {
+        statusEl.textContent = "Could not start microphone: " + err.message;
+      }
+    });
+
+    recognizer.addEventListener("start", () => {
+      recording = true;
+      micBtn.classList.add("recording");
+      statusEl.textContent = "Listening...";
+    });
+
+    recognizer.addEventListener("result", (event) => {
+      const transcript = event.results[0][0].transcript;
+      statusEl.textContent = "Captured: " + transcript;
+      setComponentValue(transcript);
+    });
+
+    recognizer.addEventListener("error", (event) => {
+      statusEl.textContent = "Mic error: " + event.error;
+    });
+
+    recognizer.addEventListener("end", () => {
+      recording = false;
+      micBtn.classList.remove("recording");
+      if (statusEl.textContent === "Listening...") {
+        statusEl.textContent = "Click the mic and speak";
+      }
+    });
+  }
+
+  window.addEventListener("load", () => {
+    initStreamlit();
+    setFrameHeight();
+    // The very first setFrameHeight can race the host's own component-ready
+    // handshake and get silently dropped, leaving the iframe collapsed at
+    // height 0. Watch for actual content size changes (status text updates,
+    // fonts finishing load) and re-send whenever the size differs — this is
+    // the same self-healing approach streamlit-component-lib uses internally.
+    new ResizeObserver(() => setFrameHeight()).observe(document.body);
+  });
+</script>
+</body>
+</html>

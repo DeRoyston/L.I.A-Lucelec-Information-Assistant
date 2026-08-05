@@ -1,0 +1,15 @@
+# ── SECRETS — never commit these. This section is why your keys stay yours. ──
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+secrets.toml
+*.key
+
+# ── Python leftovers ──
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# ── The harvest waiting room is local working state, not source ──
+pending_review/

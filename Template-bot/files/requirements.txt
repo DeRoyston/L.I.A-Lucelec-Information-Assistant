@@ -1,0 +1,25 @@
+# ── Core: the app will not run without these ──────────────────────────
+streamlit>=1.36
+
+# The bot now routes every AI call through LangGraph, so these are REQUIRED,
+# not optional. LangGraph builds the guardrail → router → A.R.T. → chatbot
+# graph; each langchain-* package is the adapter for one provider.
+langgraph>=0.2
+langchain-core>=0.3
+langchain-openai>=0.2          # OpenAI
+langchain-google-genai>=2.0    # Google Gemini
+langchain-groq>=0.2            # Groq
+
+# Still used directly by the web-harvest and offline paths.
+openai>=1.40
+
+# ── Web harvesting (needed if you use the Web harvest tab) ────────────
+beautifulsoup4>=4.12           # much better HTML-to-text than the built-in fallback
+pypdf>=4.0                     # only if the client posts tariffs as PDFs
+
+# ── Optional student upgrades — uncomment when you reach them ─────────
+# pandas>=2.0                  # eval tables, chat-log analysis
+# scikit-learn>=1.4            # lighter TF-IDF / cosine retrieval upgrade
+# sentence-transformers>=3.0   # embedding retrieval. HEAVY (~500MB) — this line
+#                              # is the usual reason a Deepnote install hangs, so
+#                              # it stays commented until a Pod actually needs it.
