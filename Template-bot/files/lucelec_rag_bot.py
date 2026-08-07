@@ -151,6 +151,9 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
     color: #fafafa !important;
     border-color: #3a3f4b !important;
 }
+.stTabs [data-baseweb="tab"]:not([aria-selected="true"]) { border-color: #3a3f4b !important; }
+[data-testid="stChatInput"] { border-color: #3a3f4b !important; }
+[data-testid="stSidebar"] button { border-color: #3a3f4b !important; }
 """
 
 POLISH_CSS = """
@@ -164,6 +167,37 @@ POLISH_CSS = """
     font-style: italic; margin: 0;
 }
 .lucelec-footer-icon { width: 40px; height: auto; }
+
+@keyframes lucelec-msg-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+[data-testid="stChatMessage"] {
+    animation: lucelec-msg-in 200ms ease-out;
+}
+
+[data-testid="stSidebar"] button,
+.stTabs [data-baseweb="tab"] {
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.parish-badge {
+    border: 1px solid #b0b8c1;
+}
+.stTabs [data-baseweb="tab"] {
+    border: 1px solid transparent;
+    border-radius: 6px 6px 0 0;
+}
+.stTabs [data-baseweb="tab"]:not([aria-selected="true"]) {
+    border-color: #d0d5db;
+}
+[data-testid="stChatInput"] {
+    border: 1px solid #c4cad3;
+    border-radius: 8px;
+}
+[data-testid="stSidebar"] button {
+    border: 1px solid #d0d5db;
+}
 """
 
 # Streamlit's config.toml [theme] only sets the DEFAULT the browser loads

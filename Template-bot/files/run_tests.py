@@ -325,6 +325,22 @@ check(
     "build_accessibility_css(...) is not called before the VIEW ROUTER section — font size won't persist once Settings is closed"
 )
 
+polish_css_start = src_text.index("POLISH_CSS = ")
+polish_css_end = src_text.index('"""', src_text.index('"""', polish_css_start) + 3)
+polish_css_block = src_text[polish_css_start:polish_css_end]
+check(
+    "POLISH_CSS has message fade-in animation",
+    "@keyframes" in polish_css_block and "stChatMessage" in polish_css_block,
+    "no keyframe animation targeting stChatMessage found in POLISH_CSS"
+)
+check(
+    "POLISH_CSS outlines the four target elements",
+    all(sel in polish_css_block for sel in
+        [".parish-badge", "stChatInput", "stTab"])
+    and "sidebar" in polish_css_block.lower(),
+    "POLISH_CSS is missing one or more of the four outlined elements"
+)
+
 
 # =====================================================================
 section("RESULTS")
