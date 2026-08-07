@@ -6,3 +6,17 @@ base="light"
 #textColor = "#000000"
 #font = "monospace"
 #'''
+
+# Customers hit this app directly. Streamlit's default shows a full Python
+# traceback (file paths, function names, internal structure) to whoever
+# triggers an uncaught exception — fine for a local dev session, not for
+# something LUCELEC customers use. This keeps the error message generic
+# in the browser; the real traceback still goes to the server log.
+[client]
+showErrorDetails = false
+
+# Caps how large a file the Excel/PDF knowledge-base uploader (admin-only)
+# will accept, in MB. Without a limit a single upload could pull in enough
+# data to stall pandas/pypdf parsing or exhaust memory.
+[server]
+maxUploadSize = 25

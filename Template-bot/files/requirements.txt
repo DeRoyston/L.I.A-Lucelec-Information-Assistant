@@ -15,10 +15,14 @@ openai>=1.40
 
 # ── Web harvesting (needed if you use the Web harvest tab) ────────────
 beautifulsoup4>=4.12           # much better HTML-to-text than the built-in fallback
-pypdf>=4.0                     # only if the client posts tariffs as PDFs
+pypdf>=4.0                     # PDF reading — web-harvest AND the Excel/PDF knowledge tab
+
+# ── Excel Knowledge Base tab (needed for the Excel/PDF admin tab) ─────
+pandas>=2.0                    # reads uploaded workbooks into records
+openpyxl>=3.1                  # engine pandas needs for .xlsx
+xlrd>=2.0                      # engine pandas needs for legacy .xls
 
 # ── Optional student upgrades — uncomment when you reach them ─────────
-# pandas>=2.0                  # eval tables, chat-log analysis
 # scikit-learn>=1.4            # lighter TF-IDF / cosine retrieval upgrade
 # sentence-transformers>=3.0   # embedding retrieval. HEAVY (~500MB) — this line
 #                              # is the usual reason a Deepnote install hangs, so
