@@ -3150,7 +3150,7 @@ def streamlit_app():
         display: flex; justify-content: center; align-items: center; gap: 1.5rem; margin-bottom: 2rem;
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); border: 2px solid #3498DB;
     }}
-    .lucelec-logo {{ height: 110px; width: auto; }}
+    .lucelec-logo {{ height: 110px; width: auto; mix-blend-mode: multiply; }}
     .lucelec-text-container {{ display: flex; flex-direction: column; justify-content: center; text-align: left; }}
     .lucelec-title {{ font-size: 4rem; font-weight: 900; font-family: 'Arial Black', sans-serif; color: #F7DC6F !important; text-shadow: 3px 3px 0px #2C3E50; margin: 0; line-height: 1.1; letter-spacing: 2px; }}
     .lucelec-subtitle {{ font-size: 1.6rem; font-weight: 800; font-family: 'Arial Black', sans-serif; color: #1A5276 !important; margin: 0; letter-spacing: 1px; }}
