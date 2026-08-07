@@ -13,6 +13,7 @@ import os
 import sys
 import glob
 import shutil
+import inspect
 import contextlib
 
 # Windows consoles often use a codepage that can't encode the arrow/dot
@@ -299,19 +300,49 @@ check(
     "no .lucelec-footer markup found in streamlit_app()"
 )
 
+# Final-review finding 2: POLISH_CSS and DARK_MODE_CSS both set
+# .lucelec-footer-text color (and the footer icon fill) with !important at
+# equal specificity, so the <style> tag injected LATER wins. POLISH_CSS used
+# to inject down at the footer markup, i.e. after DARK_MODE_CSS, which let
+# its light-mode navy beat the dark-mode override (~1.4:1 contrast).
+# DARK_MODE_CSS must stay the last-injected style block in the file.
+check(
+    "POLISH_CSS injects before DARK_MODE_CSS",
+    src_text.index("<style>{POLISH_CSS}</style>")
+        < src_text.index("<style>{DARK_MODE_CSS}</style>"),
+    "POLISH_CSS injects after DARK_MODE_CSS — its light-mode footer color will win the !important tie in dark mode"
+)
+check(
+    "footer building icons take their fill from CSS, not an inline attribute",
+    ".lucelec-footer-icon-building" in dark_css_block
+        and 'class="lucelec-footer-icon-building"' in src_text,
+    "footer silhouettes still hardcode fill=\"#2C3E50\" inline, so dark mode can't lighten them"
+)
+
 # Bug 4: build_accessibility_css() used a universal `!important` selector
 # that clobbered the banner's .lucelec-title/.lucelec-subtitle font-size
 # (and the footer text), and its injection only ran while the Settings
 # expander was open so the chosen font size stopped applying the instant
 # Settings was collapsed.
-import inspect
-a11y_css_source = inspect.getsource(b.build_accessibility_css)
+# Assert against the CSS the function actually emits, not its source text —
+# the docstring discusses the broken :not() approach by name, so a source
+# scan would match the prose instead of the rules.
+a11y_css = b.build_accessibility_css(16)
 check(
-    "accessibility CSS excludes branded title/subtitle/footer text",
-    ":not(.lucelec-title)" in a11y_css_source
-        and ":not(.lucelec-subtitle)" in a11y_css_source
-        and ":not(.lucelec-footer-text)" in a11y_css_source,
-    "build_accessibility_css() selector can still clobber branded text font-size"
+    "accessibility CSS re-asserts branded title/subtitle/footer sizes",
+    all(f"{sel}, {sel} *" in a11y_css for sel in
+        (".lucelec-title", ".lucelec-subtitle", ".lucelec-footer-text")),
+    "build_accessibility_css() can still clobber branded text font-size — Streamlit's inner <span> needs the sizes re-asserted on descendants too"
+)
+# The `*:not(.lucelec-title):not(...)` exclusion approach is known-broken and
+# must not come back: (a) it can't reach the inner <span> Streamlit wraps
+# heading text in, and (b) `:not()` inherits its argument's specificity, so
+# three chained :not() calls push the scaling rule to (0,4,0) and silently
+# out-specify the (0,1,0) re-assertion above no matter what order they're in.
+check(
+    "accessibility CSS doesn't rely on :not() exclusions",
+    ":not(.lucelec-" not in a11y_css,
+    "build_accessibility_css() uses :not() exclusions again — they out-specify the branded-size re-assertion and silently shrink the banner"
 )
 
 app_source = inspect.getsource(b.streamlit_app)
@@ -367,10 +398,9 @@ if hasattr(b, "_heuristic_chat_title"):
         f"got: {b._heuristic_chat_title('')!r}"
     )
 
-process_chat_source = inspect.getsource(b.streamlit_app)
 check(
     "process_chat_message titles the chat exactly once, using the titled flag",
-    'chat.get("titled"' in process_chat_source and "summarize_chat_title(" in process_chat_source,
+    'chat.get("titled"' in app_source and "summarize_chat_title(" in app_source,
     "process_chat_message() doesn't call summarize_chat_title() guarded by the titled flag"
 )
 for fn_name in ("add_new_chat", "delete_chat"):

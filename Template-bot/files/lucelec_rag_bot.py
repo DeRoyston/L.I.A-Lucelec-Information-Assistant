@@ -71,22 +71,44 @@ WORKSPACE_ROOT = os.path.dirname(BASE_DIR) if os.path.basename(BASE_DIR) == "fil
 def build_accessibility_css(font_size: int) -> str:
     """Build the CSS that scales the Streamlit app UI to the requested font size.
 
-    Excludes the branded banner/footer text (.lucelec-title,
-    .lucelec-subtitle, .lucelec-footer-text) — those are sized in rem by
-    design and previously got silently shrunk to the accessibility font
-    size because a universal `!important` selector always beats a
-    non-important class rule regardless of specificity.
+    The branded banner/footer text (.lucelec-title, .lucelec-subtitle,
+    .lucelec-footer-text) is sized in rem by design and must not be scaled.
+    It used to get silently shrunk because a universal `!important` selector
+    always beats a non-important class rule regardless of specificity.
+
+    Protecting it with `*:not(.lucelec-title):not(...)` exclusions does NOT
+    work, for two compounding reasons, so that approach is deliberately not
+    used here:
+
+    1. Streamlit wraps heading text in an inner `<span id="...">` for
+       aria-labelledby — `<h1 class="lucelec-title" aria-labelledby=":r1:">
+       <span id=":r1:">LUCELEC</span></h1>`. `:not(.lucelec-title)` excludes
+       the `<h1>`, but the inner `<span>` that actually paints the text still
+       matches `[data-testid="stMain"] *`. A `:not()` exclusion can never
+       cover the descendants of an excluded element.
+    2. `:not()` takes the specificity of its argument, so three chained
+       `:not(.class)` calls push the universal rule to (0,4,0) — which then
+       beats any sane `.lucelec-title *` re-assertion (0,1,0) on specificity,
+       silently, no matter what order the rules appear in.
+
+    So the scaling rule below stays at a plain (0,1,0), and the branded sizes
+    are re-asserted positively after it. Both are `!important` at equal
+    specificity, so the later re-assertion wins the tie — and because it
+    names descendants explicitly it holds regardless of how Streamlit nests
+    the text. line-height is re-asserted too, since these elements are no
+    longer excluded from the scaling rule's 1.45.
     """
     font_size = max(14, min(24, int(font_size)))
     return f"""
     :root {{ --lucelec-font-size: {font_size}px; }}
     html, body, [data-testid="stAppViewContainer"], [data-testid="stSidebar"], [data-testid="stMain"],
-    [data-testid="stAppViewContainer"] *:not(.lucelec-title):not(.lucelec-subtitle):not(.lucelec-footer-text),
-    [data-testid="stSidebar"] *:not(.lucelec-title):not(.lucelec-subtitle):not(.lucelec-footer-text),
-    [data-testid="stMain"] *:not(.lucelec-title):not(.lucelec-subtitle):not(.lucelec-footer-text) {{
+    [data-testid="stAppViewContainer"] *, [data-testid="stSidebar"] *, [data-testid="stMain"] * {{
         font-size: var(--lucelec-font-size) !important;
         line-height: 1.45 !important;
     }}
+    .lucelec-title, .lucelec-title * {{ font-size: 4rem !important; line-height: 1.1 !important; }}
+    .lucelec-subtitle, .lucelec-subtitle * {{ font-size: 1.6rem !important; line-height: normal !important; }}
+    .lucelec-footer-text, .lucelec-footer-text * {{ font-size: 1.4rem !important; line-height: normal !important; }}
     """
 
 
@@ -140,16 +162,37 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
     border-color: #5a606b !important;
 }
 .lucelec-banner { background-color: #1a2733 !important; border-color: #2c3e50 !important; }
-.lucelec-title { color: #F7DC6F !important; }
-.lucelec-subtitle { color: #85c1e9 !important; }
+/* Descendants are named explicitly for the same reason build_accessibility_css()
+   re-asserts font-size on them: Streamlit wraps heading text in an inner
+   <span id="..."> for aria-labelledby, and that span matches the generic
+   `[data-testid="stMarkdownContainer"] *` rule above. Targeting only
+   `.lucelec-title` colours the <h1> brand yellow while the span that actually
+   paints the wordmark stayed #fafafa white. */
+.lucelec-title, .lucelec-title * { color: #F7DC6F !important; }
+.lucelec-subtitle, .lucelec-subtitle * { color: #85c1e9 !important; }
 .lucelec-footer { background-color: #1a2733 !important; }
-.lucelec-footer-text { color: #85c1e9 !important; }
+.lucelec-footer-text, .lucelec-footer-text * { color: #85c1e9 !important; }
+/* The building silhouettes are filled via this class rather than an inline
+   SVG fill= attribute precisely so this override can reach them — a lighter
+   slate that still reads against the #1a2733 dark footer background. */
+.lucelec-footer-icon-building { fill: #4a6278 !important; }
 /* parish_tooltip_html() hardcodes light inline styles on these badges —
    !important here still wins over a plain (non-!important) inline style. */
 .parish-badge {
     background: #1e222b !important;
     color: #fafafa !important;
     border-color: #3a3f4b !important;
+}
+/* The banner logo uses mix-blend-mode: multiply in light mode to blend its
+   white PNG background into the light-blue banner. Against the dark navy
+   dark-mode banner, multiply drives every logo pixel toward black and the
+   seal all but disappears. Revert to a normal blend and put a small white
+   circular backdrop behind it — the logo PNG is itself circular, so a
+   matching circle reads as intentional rather than as a stray white box. */
+.lucelec-logo {
+    mix-blend-mode: normal !important;
+    background-color: #ffffff;
+    border-radius: 50%;
 }
 .stTabs [data-baseweb="tab"]:not([aria-selected="true"]) { border-color: #3a3f4b !important; }
 [data-testid="stChatInput"] { border-color: #3a3f4b !important; }
@@ -167,6 +210,10 @@ POLISH_CSS = """
     font-style: italic; margin: 0;
 }
 .lucelec-footer-icon { width: 40px; height: auto; }
+/* Set in CSS, not as an inline SVG fill= attribute, so DARK_MODE_CSS can
+   override it — an inline presentation attribute is reachable, but keeping
+   both themes in CSS keeps the two colours side by side in the codebase. */
+.lucelec-footer-icon-building { fill: #2C3E50; }
 
 @keyframes lucelec-msg-in {
     from { opacity: 0; transform: translateY(4px); }
@@ -3296,13 +3343,24 @@ def streamlit_app():
     </div>
     """, unsafe_allow_html=True)
 
+    # 2.4 POLISH_CSS INJECTION — injected HERE, not down at the footer
+    # markup in section 8, so it lands in the DOM before DARK_MODE_CSS.
+    # POLISH_CSS and DARK_MODE_CSS both set .lucelec-footer-text color
+    # (and the footer building-icon fill) with !important at equal
+    # specificity, so the later <style> tag wins. Injecting POLISH_CSS at
+    # the footer meant its light-mode navy beat dark mode's override,
+    # leaving ~1.4:1 dark-navy-on-dark-navy footer text. Only the style
+    # moved up; the footer HTML stays in section 8 where it renders.
+    st.markdown(f"<style>{POLISH_CSS}</style>", unsafe_allow_html=True)
+
     # 2.5 DARK MODE CSS INJECTION — see DARK_MODE_CSS for why this is
     # injected instead of set via config.toml. Must come AFTER the banner's
-    # own <style> block above: both set .lucelec-title/.lucelec-subtitle
-    # color with !important, so whichever <style> tag lands later in the
+    # own <style> block above AND after POLISH_CSS: they all set branded
+    # colors with !important, so whichever <style> tag lands later in the
     # DOM wins the cascade tie. Injecting first (as before) let the
     # banner's light-mode navy subtitle color silently beat dark mode's
-    # override, leaving dark navy text on a dark navy banner.
+    # override, leaving dark navy text on a dark navy banner. Invariant:
+    # DARK_MODE_CSS is the LAST <style> block injected in this function.
     if st.session_state.get("dark_mode", False):
         st.markdown(f"<style>{DARK_MODE_CSS}</style>", unsafe_allow_html=True)
 
@@ -3955,12 +4013,17 @@ def streamlit_app():
                 st.metric("Passed", f"{passed}/{len(rows)}")
 
     # 8. FOOTER
-    st.markdown(f"<style>{POLISH_CSS}</style>", unsafe_allow_html=True)
+    # POLISH_CSS (which styles this block) is injected up in section 2.4, not
+    # here — see the comment there for why the order against DARK_MODE_CSS
+    # matters. The building silhouettes take their fill from the
+    # .lucelec-footer-icon-building class rather than an inline fill= so
+    # DARK_MODE_CSS can lighten them; the small window squares stay inline
+    # since #5DADE2 reads fine against both footer backgrounds.
     st.markdown("""
     <div class="lucelec-footer">
         <svg class="lucelec-footer-icon" viewBox="0 0 60 80" xmlns="http://www.w3.org/2000/svg">
-            <rect x="5" y="30" width="20" height="50" fill="#2C3E50"/>
-            <rect x="30" y="15" width="20" height="65" fill="#2C3E50"/>
+            <rect x="5" y="30" width="20" height="50" class="lucelec-footer-icon-building"/>
+            <rect x="30" y="15" width="20" height="65" class="lucelec-footer-icon-building"/>
             <rect x="10" y="38" width="5" height="5" fill="#5DADE2"/>
             <rect x="18" y="38" width="5" height="5" fill="#5DADE2"/>
             <rect x="35" y="25" width="5" height="5" fill="#5DADE2"/>
@@ -3968,8 +4031,8 @@ def streamlit_app():
         </svg>
         <p class="lucelec-footer-text">The Power Of Caring</p>
         <svg class="lucelec-footer-icon" viewBox="0 0 60 80" xmlns="http://www.w3.org/2000/svg">
-            <rect x="5" y="30" width="20" height="50" fill="#2C3E50"/>
-            <rect x="30" y="15" width="20" height="65" fill="#2C3E50"/>
+            <rect x="5" y="30" width="20" height="50" class="lucelec-footer-icon-building"/>
+            <rect x="30" y="15" width="20" height="65" class="lucelec-footer-icon-building"/>
             <rect x="10" y="38" width="5" height="5" fill="#5DADE2"/>
             <rect x="18" y="38" width="5" height="5" fill="#5DADE2"/>
             <rect x="35" y="25" width="5" height="5" fill="#5DADE2"/>
