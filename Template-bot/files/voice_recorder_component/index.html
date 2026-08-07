@@ -15,16 +15,20 @@
     padding: 6px 4px;
   }
   #mic-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border: none;
     border-radius: 50%;
     width: 42px;
     height: 42px;
-    font-size: 20px;
     cursor: pointer;
     background: #f0f2f6;
     color: #262730;
     transition: background 0.15s ease, transform 0.1s ease;
   }
+  #mic-btn svg { color: #262730; }
+  #mic-btn.recording svg { color: white; }
   #mic-btn:hover { background: #e6e9ef; }
   #mic-btn.recording {
     background: #ff4b4b;
@@ -41,11 +45,23 @@
     font-size: 13px;
     color: #555;
   }
+  @media (prefers-color-scheme: dark) {
+    #mic-btn { background: #1e222b; }
+    #mic-btn svg { color: #fafafa; }
+    #mic-btn:hover { background: #2a2f3a; }
+    #status { color: #9aa1ab; }
+  }
 </style>
 </head>
 <body>
   <div id="wrap">
-    <button id="mic-btn" title="Record a question">🎤</button>
+    <button id="mic-btn" title="Record a question">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/>
+        <path d="M5 10v1a7 7 0 0 0 14 0v-1" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M12 18v3M9 21h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
     <span id="status">Click the mic and speak</span>
   </div>
 

@@ -3619,7 +3619,7 @@ def streamlit_app():
             st.session_state.show_voice_widget = not st.session_state.get("show_voice_widget", False)
 
         with col_mic:
-            st.button("🎤", on_click=toggle_voice_widget, use_container_width=True)
+            st.button("🎙️", on_click=toggle_voice_widget, use_container_width=True)
 
     # ---------- TAB 2: Location Status ----------
     with tab_status:
