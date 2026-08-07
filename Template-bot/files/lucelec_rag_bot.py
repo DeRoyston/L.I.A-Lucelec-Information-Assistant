@@ -131,6 +131,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
     border-color: #5a606b !important;
 }
 .lucelec-banner { background-color: #1a2733 !important; border-color: #2c3e50 !important; }
+.lucelec-title { color: #F7DC6F !important; }
 .lucelec-subtitle { color: #85c1e9 !important; }
 /* parish_tooltip_html() hardcodes light inline styles on these badges —
    !important here still wins over a plain (non-!important) inline style. */

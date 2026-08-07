@@ -277,6 +277,25 @@ check("set_page_config is first st call",
 
 
 # =====================================================================
+section("12 · UI polish")
+# =====================================================================
+src_text = open(b.__file__, encoding="utf-8").read()
+
+# Bug 3: .lucelec-title must have an explicit color override inside
+# DARK_MODE_CSS, or it loses the cascade tie against the generic
+# stMarkdownContainer rule and renders white/gray in dark mode instead
+# of the brand yellow.
+dark_css_start = src_text.index("DARK_MODE_CSS = ")
+dark_css_end = src_text.index('"""', src_text.index('"""', dark_css_start) + 3)
+dark_css_block = src_text[dark_css_start:dark_css_end]
+check(
+    "dark mode CSS pins .lucelec-title color",
+    ".lucelec-title" in dark_css_block and "#F7DC6F" in dark_css_block,
+    "DARK_MODE_CSS has no explicit .lucelec-title color override"
+)
+
+
+# =====================================================================
 section("RESULTS")
 # =====================================================================
 total = len(PASSES) + len(FAILS)
