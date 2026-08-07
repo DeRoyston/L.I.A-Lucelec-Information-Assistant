@@ -299,6 +299,32 @@ check(
     "no .lucelec-footer markup found in streamlit_app()"
 )
 
+# Bug 4: build_accessibility_css() used a universal `!important` selector
+# that clobbered the banner's .lucelec-title/.lucelec-subtitle font-size
+# (and the footer text), and its injection only ran while the Settings
+# expander was open so the chosen font size stopped applying the instant
+# Settings was collapsed.
+import inspect
+a11y_css_source = inspect.getsource(b.build_accessibility_css)
+check(
+    "accessibility CSS excludes branded title/subtitle/footer text",
+    ":not(.lucelec-title)" in a11y_css_source
+        and ":not(.lucelec-subtitle)" in a11y_css_source
+        and ":not(.lucelec-footer-text)" in a11y_css_source,
+    "build_accessibility_css() selector can still clobber branded text font-size"
+)
+
+app_source = inspect.getsource(b.streamlit_app)
+# The old bug: injection call only appears inside the `show_settings`
+# block. After the fix it must also appear before "# 4. VIEW ROUTER"
+# (i.e. unconditionally, every rerun).
+before_router = app_source[:app_source.index("# 4. VIEW ROUTER")]
+check(
+    "accessibility CSS injects unconditionally every rerun",
+    "build_accessibility_css(" in before_router,
+    "build_accessibility_css(...) is not called before the VIEW ROUTER section — font size won't persist once Settings is closed"
+)
+
 
 # =====================================================================
 section("RESULTS")

@@ -69,12 +69,21 @@ WORKSPACE_ROOT = os.path.dirname(BASE_DIR) if os.path.basename(BASE_DIR) == "fil
 
 
 def build_accessibility_css(font_size: int) -> str:
-    """Build the CSS that scales the Streamlit app UI to the requested font size."""
+    """Build the CSS that scales the Streamlit app UI to the requested font size.
+
+    Excludes the branded banner/footer text (.lucelec-title,
+    .lucelec-subtitle, .lucelec-footer-text) — those are sized in rem by
+    design and previously got silently shrunk to the accessibility font
+    size because a universal `!important` selector always beats a
+    non-important class rule regardless of specificity.
+    """
     font_size = max(14, min(24, int(font_size)))
     return f"""
     :root {{ --lucelec-font-size: {font_size}px; }}
     html, body, [data-testid="stAppViewContainer"], [data-testid="stSidebar"], [data-testid="stMain"],
-    [data-testid="stAppViewContainer"] *, [data-testid="stSidebar"] *, [data-testid="stMain"] * {{
+    [data-testid="stAppViewContainer"] *:not(.lucelec-title):not(.lucelec-subtitle):not(.lucelec-footer-text),
+    [data-testid="stSidebar"] *:not(.lucelec-title):not(.lucelec-subtitle):not(.lucelec-footer-text),
+    [data-testid="stMain"] *:not(.lucelec-title):not(.lucelec-subtitle):not(.lucelec-footer-text) {{
         font-size: var(--lucelec-font-size) !important;
         line-height: 1.45 !important;
     }}
@@ -3141,10 +3150,16 @@ def streamlit_app():
         return UI_LANGUAGES.get(st.session_state.ui_language, UI_LANGUAGES["English"]).get(key, key)
     # --------------------------------------
 
-    # 2. ACCESSIBILITY CSS INJECTION
+    # 2. ACCESSIBILITY CSS INJECTION — runs every rerun (not gated behind
+    # Settings being open) so the chosen font size persists once the
+    # panel is collapsed. Reads the live slider value via its own
+    # session_state key when Settings is open this run (same idiom as
+    # the ui_language selectbox above), otherwise the last-saved value.
     a11y = st.session_state.get("accessibility_settings", {
         "font_size": 16, "tts": False, "stt": False, "simple_language": False
     })
+    _current_font_size = int(st.session_state.get("font_size_slider", a11y.get("font_size", 16)))
+    st.markdown(f"<style>{build_accessibility_css(_current_font_size)}</style>", unsafe_allow_html=True)
 
     # 3. HTML BANNER RENDERER
     @st.cache_data
@@ -3384,9 +3399,8 @@ def streamlit_app():
                 font_size_value = int(st.session_state.get("font_size_slider", font_size_value))
                 a11y_state["font_size"] = font_size_value
                 st.session_state.accessibility_settings = a11y_state
-
-                css = build_accessibility_css(font_size_value)
-                st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+                # CSS injection now happens once, unconditionally, near the
+                # top of streamlit_app() — see "2. ACCESSIBILITY CSS INJECTION".
 
                 if is_admin:
                     st.success("Signed in as Administrator")
