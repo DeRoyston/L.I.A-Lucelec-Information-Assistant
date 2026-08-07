@@ -341,6 +341,47 @@ check(
     "POLISH_CSS is missing one or more of the four outlined elements"
 )
 
+# Task 7: LLM-generated chat titles
+check("has _heuristic_chat_title()", hasattr(b, "_heuristic_chat_title"))
+check("has summarize_chat_title()", hasattr(b, "summarize_chat_title"))
+
+if hasattr(b, "_heuristic_chat_title"):
+    t1 = b._heuristic_chat_title("How much does an old fridge cost to run per month?")
+    check(
+        "heuristic title is short and non-empty",
+        bool(t1) and len(t1) <= 42,
+        f"got: {t1!r}"
+    )
+    check(
+        "heuristic title drops common stopwords",
+        "does" not in t1.lower().split() and "the" not in t1.lower().split(),
+        f"got: {t1!r}"
+    )
+    check(
+        "heuristic title is deterministic",
+        b._heuristic_chat_title("test message") == b._heuristic_chat_title("test message")
+    )
+    check(
+        "heuristic title never blows up on empty input",
+        b._heuristic_chat_title("") == "New chat",
+        f"got: {b._heuristic_chat_title('')!r}"
+    )
+
+process_chat_source = inspect.getsource(b.streamlit_app)
+check(
+    "process_chat_message titles the chat exactly once, using the titled flag",
+    'chat.get("titled"' in process_chat_source and "summarize_chat_title(" in process_chat_source,
+    "process_chat_message() doesn't call summarize_chat_title() guarded by the titled flag"
+)
+for fn_name in ("add_new_chat", "delete_chat"):
+    fn_source = app_source[app_source.index(f"def {fn_name}("):]
+    fn_source = fn_source[:fn_source.index("\n\n    def ") if "\n\n    def " in fn_source else 400]
+    check(
+        f"{fn_name}() initializes the titled flag",
+        '"titled": False' in fn_source,
+        f"{fn_name}() creates a chat dict without titled: False"
+    )
+
 
 # =====================================================================
 section("RESULTS")

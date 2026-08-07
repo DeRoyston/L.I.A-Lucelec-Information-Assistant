@@ -2002,6 +2002,73 @@ def llm_call(system_prompt: str, user_msg: str) -> str:
     raise RuntimeError(LAST_CALL["error"])           # give up; safe_call catches this
 
 
+_TITLE_STOPWORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "do", "does", "did",
+    "how", "what", "when", "where", "why", "who", "which", "can",
+    "could", "would", "should", "will", "i", "my", "me", "to", "of",
+    "for", "in", "on", "at", "and", "or", "please", "hi", "hello",
+}
+
+
+def _heuristic_chat_title(text: str) -> str:
+    """Turn a raw user message into a short chat-title, no LLM call.
+
+    Deterministic — same input always gives the same output. Used as
+    the fallback when no provider is configured or the title LLM call
+    fails, so a chat never gets stuck without a real title.
+    """
+    words = re.findall(r"[A-Za-z0-9']+", text)
+    kept = [w for w in words if w.lower() not in _TITLE_STOPWORDS]
+    if not kept:
+        kept = words
+    title = " ".join(kept[:6]).strip()
+    if not title:
+        return "New chat"
+    title = title[0].upper() + title[1:]
+    if len(title) > 40:
+        title = title[:40].rstrip() + "…"
+    return title
+
+
+def summarize_chat_title(first_message: str) -> str:
+    """Generate a short chat-list title from the user's first message.
+
+    Tries the active LLM provider chain first, asking for a 3-6 word
+    summary. Falls back to _heuristic_chat_title() on any failure — no
+    provider configured, network error, timeout, or an unexpected
+    response shape — so this never raises into the UI.
+    """
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    system = (
+        "Summarize the user's question as a short chat title: 3 to 6 "
+        "words, no trailing punctuation, no quotation marks. Reply with "
+        "only the title, nothing else."
+    )
+    for provider in active_chain():
+        if not is_configured(provider):
+            continue
+        try:
+            llm = get_llm_for_provider(provider)
+            response = llm.invoke([
+                SystemMessage(content=system),
+                HumanMessage(content=first_message),
+            ])
+            if isinstance(response.content, list):
+                title = " ".join(
+                    block.get("text", "") for block in response.content
+                    if isinstance(block, dict)
+                ).strip()
+            else:
+                title = str(response.content).strip()
+            title = title.strip("\"' ")
+            if title:
+                return title[:60]
+        except Exception:
+            continue
+    return _heuristic_chat_title(first_message)
+
+
 def extractive_answer(question: str, hits: list) -> str:
     """The emergency answer used when NO provider works.
 
@@ -2856,7 +2923,7 @@ def initialize_sidebar_state(state: Optional[dict] = None) -> dict:
         "simple_language": False,
     })
     state.setdefault("messages", [])
-    state.setdefault("chat_sessions", [{"id": str(uuid4()), "title": "New chat", "messages": []}])
+    state.setdefault("chat_sessions", [{"id": str(uuid4()), "title": "New chat", "messages": [], "titled": False}])
     state.setdefault("active_chat_id", state["chat_sessions"][0]["id"])
     state.setdefault("pending_voice_text", "")
     state.setdefault("show_voice_widget", False)
@@ -2890,7 +2957,7 @@ def reset_chat_session(state: Optional[dict] = None) -> dict:
     """Reset chat UI state without breaking the rest of the sidebar settings."""
     state = initialize_sidebar_state(state)
     state["messages"] = []
-    state["chat_sessions"] = [{"id": str(uuid4()), "title": "New chat", "messages": []}]
+    state["chat_sessions"] = [{"id": str(uuid4()), "title": "New chat", "messages": [], "titled": False}]
     state["active_chat_id"] = state["chat_sessions"][0]["id"]
     state["pending_voice_text"] = ""
     state["show_voice_widget"] = False
@@ -3327,7 +3394,7 @@ def streamlit_app():
                 break
 
     def add_new_chat():
-        new_chat = {"id": str(uuid4()), "title": t("new_chat_title"), "messages": []}
+        new_chat = {"id": str(uuid4()), "title": t("new_chat_title"), "messages": [], "titled": False}
         st.session_state.chat_sessions.append(new_chat)
         st.session_state.active_chat_id = new_chat["id"]
         st.session_state.messages = []
@@ -3338,7 +3405,7 @@ def streamlit_app():
         chats = [c for c in st.session_state.get("chat_sessions", []) if c["id"] != chat_id]
         was_active = st.session_state.get("active_chat_id") == chat_id
         if not chats:
-            chats = [{"id": str(uuid4()), "title": t("new_chat_title"), "messages": []}]
+            chats = [{"id": str(uuid4()), "title": t("new_chat_title"), "messages": [], "titled": False}]
         st.session_state.chat_sessions = chats
         if was_active:
             st.session_state.active_chat_id = chats[0]["id"]
@@ -3348,7 +3415,7 @@ def streamlit_app():
 
     # 7. SIDEBAR MENUS
     with st.sidebar:
-        st.session_state.setdefault("chat_sessions", [{"id": str(uuid4()), "title": "New chat", "messages": []}])
+        st.session_state.setdefault("chat_sessions", [{"id": str(uuid4()), "title": "New chat", "messages": [], "titled": False}])
         st.session_state.setdefault("active_chat_id", st.session_state["chat_sessions"][0]["id"])
         st.session_state.setdefault("show_settings", False)
 
@@ -3623,6 +3690,17 @@ def streamlit_app():
             st.session_state.messages.append(
                 {"role": "assistant", "content": out["reply"], "hits": out["hits"]})
             persist_active_chat()
+
+            # Title the chat from its first exchange, once. The "titled"
+            # flag (not a message-count check) is what makes this
+            # idempotent — it survives chats restored from
+            # chat_sessions state without re-counting messages.
+            active_id = st.session_state.get("active_chat_id")
+            for chat in st.session_state.get("chat_sessions", []):
+                if chat["id"] == active_id and not chat.get("titled", False):
+                    chat["title"] = summarize_chat_title(q)
+                    chat["titled"] = True
+                    break
 
         if st.session_state.show_voice_widget:
             st.caption(t("mic_caption"))
