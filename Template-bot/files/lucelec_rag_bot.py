@@ -133,6 +133,8 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
 .lucelec-banner { background-color: #1a2733 !important; border-color: #2c3e50 !important; }
 .lucelec-title { color: #F7DC6F !important; }
 .lucelec-subtitle { color: #85c1e9 !important; }
+.lucelec-footer { background-color: #1a2733 !important; }
+.lucelec-footer-text { color: #85c1e9 !important; }
 /* parish_tooltip_html() hardcodes light inline styles on these badges —
    !important here still wins over a plain (non-!important) inline style. */
 .parish-badge {
@@ -141,6 +143,20 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
     border-color: #3a3f4b !important;
 }
 """
+
+POLISH_CSS = """
+.lucelec-footer {
+    background-color: #5DADE2; padding: 1rem; border-radius: 10px;
+    display: flex; justify-content: center; align-items: center; gap: 1rem;
+    margin-top: 2rem;
+}
+.lucelec-footer-text {
+    font-size: 1.4rem; font-weight: 700; color: #2C3E50 !important;
+    font-style: italic; margin: 0;
+}
+.lucelec-footer-icon { width: 40px; height: auto; }
+"""
+
 # Streamlit's config.toml [theme] only sets the DEFAULT the browser loads
 # with — there is no runtime API to flip it from inside the script. This
 # style block, injected only when the user picks Dark in Settings, is the
@@ -3804,13 +3820,37 @@ def streamlit_app():
                 st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")   
                 st.caption(h["text"])                    
 
-        with tab_eval:                                   
+        with tab_eval:
             st.subheader("Evaluations")
-            if st.button("Run eval set"):                
-                rows = run_eval(index, user)             
-                st.dataframe(rows, use_container_width=True)         
-                passed = sum(1 for r in rows if r["passed"])         
+            if st.button("Run eval set"):
+                rows = run_eval(index, user)
+                st.dataframe(rows, use_container_width=True)
+                passed = sum(1 for r in rows if r["passed"])
                 st.metric("Passed", f"{passed}/{len(rows)}")
+
+    # 8. FOOTER
+    st.markdown(f"<style>{POLISH_CSS}</style>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class="lucelec-footer">
+        <svg class="lucelec-footer-icon" viewBox="0 0 60 80" xmlns="http://www.w3.org/2000/svg">
+            <rect x="5" y="30" width="20" height="50" fill="#2C3E50"/>
+            <rect x="30" y="15" width="20" height="65" fill="#2C3E50"/>
+            <rect x="10" y="38" width="5" height="5" fill="#5DADE2"/>
+            <rect x="18" y="38" width="5" height="5" fill="#5DADE2"/>
+            <rect x="35" y="25" width="5" height="5" fill="#5DADE2"/>
+            <rect x="43" y="25" width="5" height="5" fill="#5DADE2"/>
+        </svg>
+        <p class="lucelec-footer-text">The Power Of Caring</p>
+        <svg class="lucelec-footer-icon" viewBox="0 0 60 80" xmlns="http://www.w3.org/2000/svg">
+            <rect x="5" y="30" width="20" height="50" fill="#2C3E50"/>
+            <rect x="30" y="15" width="20" height="65" fill="#2C3E50"/>
+            <rect x="10" y="38" width="5" height="5" fill="#5DADE2"/>
+            <rect x="18" y="38" width="5" height="5" fill="#5DADE2"/>
+            <rect x="35" y="25" width="5" height="5" fill="#5DADE2"/>
+            <rect x="43" y="25" width="5" height="5" fill="#5DADE2"/>
+        </svg>
+    </div>
+    """, unsafe_allow_html=True)
 
 # =====================================================================
 # SECTION 12 · COMMAND LINE — running the bot without the website

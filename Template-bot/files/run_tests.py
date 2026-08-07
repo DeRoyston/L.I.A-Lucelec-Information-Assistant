@@ -293,6 +293,11 @@ check(
     ".lucelec-title" in dark_css_block and "#F7DC6F" in dark_css_block,
     "DARK_MODE_CSS has no explicit .lucelec-title color override"
 )
+check(
+    "footer bar is rendered",
+    "lucelec-footer" in src_text,
+    "no .lucelec-footer markup found in streamlit_app()"
+)
 
 
 # =====================================================================
