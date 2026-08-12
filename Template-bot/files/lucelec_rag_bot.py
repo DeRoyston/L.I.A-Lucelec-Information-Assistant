@@ -2635,139 +2635,92 @@ def chatbot(state: GraphState):
 # EXCEL KNOWLEDGE LOADER (Feature 2)
 # ---------------------------------------------------------------------
 
-def load_excel_knowledge():
-    """Reads an Excel workbook and/or PDF document(s) and stores the
-    combined knowledge-base records in st.session_state."""
-    import streamlit as st
+def handle_combined_file_uploads():
+    """Single file uploader supporting Excel, PDF, and Text files."""
     import pandas as pd
+    import streamlit as st
 
-    st.subheader("📄 Knowledge Base Uploads")
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        PdfReader = None
 
-    excel_row_records = list(st.session_state.get("excel_row_records", []))
-    pdf_records = list(st.session_state.get("excel_pdf_records", []))
-    txt_records = list(st.session_state.get("excel_txt_records", []))
-
-    # --- Excel workbook -------------------------------------------------
-    st.markdown("**Excel workbook**")
-    uploaded_excel = st.file_uploader(
-        "Upload an Excel workbook", type=["xlsx", "xls"], key="excel_uploader"
-    )
-
-    if uploaded_excel is not None:
-        # A new file can have different sheet names than the last one, so
-        # the "excel_sheet" selectbox key must not carry a stale value —
-        # Streamlit raises if a selectbox's session value isn't in options.
-        if st.session_state.get("_excel_uploaded_name") != uploaded_excel.name:
-            st.session_state.pop("excel_sheet", None)
-            st.session_state["_excel_uploaded_name"] = uploaded_excel.name
-
-        try:
-            workbook = pd.ExcelFile(uploaded_excel)
-        except ImportError:
-            st.error("Missing Excel engine. Run: pip install openpyxl xlrd")
-        except Exception as e:
-            st.error(f"Could not read that workbook: {e}")
-        else:
-            sheet = st.selectbox("Worksheet", workbook.sheet_names, key="excel_sheet")
-            try:
-                df = pd.read_excel(workbook, sheet_name=sheet)
-            except Exception as e:
-                st.error(f"Could not read sheet '{sheet}': {e}")
-            else:
-                st.success(f"Spreadsheet loaded ({len(df)} rows).")
-                st.dataframe(df, use_container_width=True)
-                excel_row_records = df.to_dict(orient="records")
-                st.session_state["excel_row_records"] = excel_row_records
-                with st.expander("Preview rows"):
-                    st.json(excel_row_records[:5])
-
-    # --- PDF documents ----------------------------------------------------
-    st.markdown("**PDF documents**")
-    uploaded_pdfs = st.file_uploader(
-        "Upload one or more PDFs", type=["pdf"], key="excel_pdf_uploader",
+    uploaded_files = st.file_uploader(
+        "Upload files",
+        type=["xlsx", "xls", "pdf", "txt"],
         accept_multiple_files=True,
+        key="unified_knowledge_uploader",
+        label_visibility="collapsed",
     )
 
-    if uploaded_pdfs:
-        try:
-            from pypdf import PdfReader
-        except ImportError:
-            st.error("PDF support needs pypdf. Run: pip install pypdf")
-        else:
-            new_pdf_records = []
-            new_pdf_chunks = []
-            for pdf_file in uploaded_pdfs:
-                try:
-                    reader = PdfReader(pdf_file)
-                    text = "\n".join((page.extract_text() or "") for page in reader.pages)
-                except Exception as e:
-                    st.error(f"Could not read '{pdf_file.name}': {e}")
-                    continue
+    if not uploaded_files:
+        return
+
+    excel_records = list(st.session_state.get("excel_row_records", []))
+    pdf_records = list(st.session_state.get("excel_pdf_records", []))
+    pdf_chunks = list(st.session_state.get("excel_pdf_chunks", []))
+    txt_records = list(st.session_state.get("excel_txt_records", []))
+    txt_chunks = list(st.session_state.get("excel_txt_chunks", []))
+
+    for file in uploaded_files:
+        filename = file.name.lower()
+
+        # --- Excel ---
+        if filename.endswith((".xlsx", ".xls")):
+            try:
+                df = pd.read_excel(file)
+                excel_records.extend(df.to_dict(orient="records"))
+                st.toast(f"Loaded Excel: {file.name} ({len(df)} rows)")
+            except Exception as e:
+                st.error(f"Error reading {file.name}: {e}")
+
+        # --- PDF ---
+        elif filename.endswith(".pdf"):
+            if not PdfReader:
+                st.error("pypdf required. Run: pip install pypdf")
+                continue
+            try:
+                reader = PdfReader(file)
+                text = "\n".join(
+                    (page.extract_text() or "") for page in reader.pages
+                )
                 if text.strip():
-                    new_pdf_records.append({"source": pdf_file.name, "text": text})
+                    pdf_records.append({"source": file.name, "text": text})
                     # Chunk it the same way source_documents/*.md are chunked,
                     # so it can be scored and retrieved by relevance to the
                     # user's actual question instead of dumped in whole.
-                    new_pdf_chunks.extend(chunk_text(text, pdf_file.name))
+                    pdf_chunks.extend(chunk_text(text, file.name))
+                    st.toast(f"Loaded PDF: {file.name}")
                 else:
-                    st.warning(f"'{pdf_file.name}' has no extractable text (likely a scanned image).")
-            if new_pdf_records:
-                pdf_records = new_pdf_records
-                st.session_state["excel_pdf_records"] = pdf_records
-                st.session_state["excel_pdf_chunks"] = new_pdf_chunks
-                st.success(f"Loaded {len(pdf_records)} PDF document(s), {len(new_pdf_chunks)} searchable chunk(s).")
-                with st.expander("Preview PDF text"):
-                    for rec in pdf_records:
-                        st.markdown(f"**{rec['source']}**")
-                        preview = rec["text"][:500] + ("..." if len(rec["text"]) > 500 else "")
-                        st.text(preview)
-
-    # --- Plain text files --------------------------------------------------
-    st.markdown("**Text files**")
-    uploaded_txts = st.file_uploader(
-        "Upload one or more .txt files", type=["txt"], key="excel_txt_uploader",
-        accept_multiple_files=True,
-    )
-
-    if uploaded_txts:
-        new_txt_records = []
-        new_txt_chunks = []
-        for txt_file in uploaded_txts:
-            try:
-                text = txt_file.read().decode("utf-8", errors="ignore")
+                    st.warning(f"'{file.name}' has no extractable text.")
             except Exception as e:
-                st.error(f"Could not read '{txt_file.name}': {e}")
-                continue
-            if text.strip():
-                new_txt_records.append({"source": txt_file.name, "text": text})
-                # Same chunking as source_documents/*.md and the PDF uploads,
-                # so it can be scored and retrieved by relevance instead of
-                # dumped in whole.
-                new_txt_chunks.extend(chunk_text(text, txt_file.name))
-            else:
-                st.warning(f"'{txt_file.name}' is empty.")
-        if new_txt_records:
-            txt_records = new_txt_records
-            st.session_state["excel_txt_records"] = txt_records
-            st.session_state["excel_txt_chunks"] = new_txt_chunks
-            st.success(f"Loaded {len(txt_records)} text file(s), {len(new_txt_chunks)} searchable chunk(s).")
-            with st.expander("Preview text files"):
-                for rec in txt_records:
-                    st.markdown(f"**{rec['source']}**")
-                    preview = rec["text"][:500] + ("..." if len(rec["text"]) > 500 else "")
-                    st.text(preview)
+                st.error(f"Error reading {file.name}: {e}")
 
-    combined_records = excel_row_records + pdf_records + txt_records
-    st.session_state["excel_records"] = combined_records
-    pdf_chunk_count = len(st.session_state.get("excel_pdf_chunks", []))
-    txt_chunk_count = len(st.session_state.get("excel_txt_chunks", []))
-    st.write(
-        f"Total knowledge loaded: {len(excel_row_records)} spreadsheet row(s), "
-        f"{len(pdf_records)} PDF document(s), {len(txt_records)} text file(s) "
-        f"({pdf_chunk_count + txt_chunk_count} chunks available to the chatbot)."
+        # --- Plain Text ---
+        elif filename.endswith(".txt"):
+            try:
+                text = file.read().decode("utf-8", errors="ignore")
+                if text.strip():
+                    txt_records.append({"source": file.name, "text": text})
+                    # Same chunking as source_documents/*.md and the PDF
+                    # uploads, so it can be scored and retrieved by
+                    # relevance instead of dumped in whole.
+                    txt_chunks.extend(chunk_text(text, file.name))
+                    st.toast(f"Loaded Text: {file.name}")
+                else:
+                    st.warning(f"'{file.name}' is empty.")
+            except Exception as e:
+                st.error(f"Error reading {file.name}: {e}")
+
+    # Update session state
+    st.session_state["excel_row_records"] = excel_records
+    st.session_state["excel_pdf_records"] = pdf_records
+    st.session_state["excel_pdf_chunks"] = pdf_chunks
+    st.session_state["excel_txt_records"] = txt_records
+    st.session_state["excel_txt_chunks"] = txt_chunks
+    st.session_state["excel_records"] = (
+        excel_records + pdf_records + txt_records
     )
-
-    return combined_records
 
 # The LangGraph pre-built ToolNode automatically runs our @tool
 tool_node = ToolNode([calculator_tool])
@@ -3032,7 +2985,7 @@ def inject_lucelec_loading_screen():
         .lucelec-loading-overlay {
             position: fixed;
             bottom: 16px;
-            left: 16px;
+            right: 16px;
             z-index: 999999;
             display: flex;
             flex-direction: column;
@@ -3110,7 +3063,35 @@ def streamlit_app():
     import base64
     inject_lucelec_loading_screen()
     # 1. PAGE CONFIGURATION (MUST BE FIRST)
-    st.set_page_config(page_title=f"{BOT_NAME} · LUCELEC", page_icon="⚡", layout="wide")        
+    st.set_page_config(page_title=f"{BOT_NAME} · LUCELEC", page_icon="⚡", layout="wide")
+
+    st.markdown(
+        """
+        <style>
+        /* Turn st.file_uploader into a compact '+' button */
+        div[data-testid="stFileUploader"] {
+            width: 100%;
+            margin-top: 0px;
+        }
+        div[data-testid="stFileUploader"] section {
+            padding: 0 !important;
+            min-height: 0 !important;
+            background-color: transparent !important;
+            border: none !important;
+        }
+        /* Hide the drag-and-drop instruction text */
+        div[data-testid="stFileUploader"] section > div:first-child {
+            display: none !important;
+        }
+        /* Expand the browse button to fill the column */
+        div[data-testid="stFileUploader"] button {
+            width: 100%;
+            border-radius: 8px;
+        }
+        </style>
+    """,
+        unsafe_allow_html=True,
+    )
 
     # --- NEW: UI TRANSLATION DICTIONARY ---
     # Every key here is customer-facing (sidebar, Chat, Location status, Area
@@ -3634,13 +3615,22 @@ def streamlit_app():
                         st.rerun()
 
     # 8. UNIFIED TAB DECLARATIONS
-    # "Knowledge base" (Excel/PDF/text uploads) is admin/staff tooling only —
-    # it never had customer-visible content even when the tab existed for
-    # everyone, so the tab itself is admin-only now too.
+    # Knowledge base uploads (Excel/PDF/text) moved to the "+" popover next
+    # to the chat input (see handle_combined_file_uploads()) — the old
+    # standalone admin-only Knowledge Base tab is retired.
+
+    # Initialize every admin-only tab variable first, so code that runs
+    # for both roles never risks referencing an undefined name — even
+    # though today only the is_admin branch below reads them.
+    tab_blueprint = None
+    tab_web = None
+    tab_sources = None
+    tab_eval = None
+
     if is_admin:
-        (tab_chat, tab_status, tab_tariffs, tab_calc, tab_excel,
+        (tab_chat, tab_status, tab_tariffs, tab_calc,
          tab_blueprint, tab_web, tab_sources, tab_eval) = st.tabs(
-            [t("chat"), t("status"), t("tariffs"), t("calc"), t("excel"), t("blueprint"), t("web"), t("sources"), t("eval")]
+            [t("chat"), t("status"), t("tariffs"), t("calc"), t("blueprint"), t("web"), t("sources"), t("eval")]
         )
     else:
         tab_chat, tab_status, tab_tariffs, tab_calc = st.tabs(
@@ -3780,7 +3770,17 @@ def streamlit_app():
             elif not voice_transcript:
                 st.info(t("mic_not_captured"))
 
-        col_input, col_mic = st.columns([9, 1])
+        # Knowledge-base uploads (Excel/PDF/text) are admin/staff tooling
+        # only — never customer-visible — so the "+" popover only appears
+        # in the input row for admins; customers get the plain two-column
+        # layout.
+        if is_admin:
+            col_add, col_input, col_mic = st.columns([1, 8, 1])
+            with col_add:
+                with st.popover("➕", help="Upload Excel, PDF, or TXT files"):
+                    handle_combined_file_uploads()
+        else:
+            col_input, col_mic = st.columns([9, 1])
         with col_input:
             if q := st.chat_input(t("ask_prompt")):
                 process_chat_message(q)
@@ -3973,13 +3973,10 @@ def streamlit_app():
     
 
     # ---------- ADMIN ONLY TABS (6-9) ----------
-    if is_admin: 
-        with tab_excel:
-            excel_records = load_excel_knowledge()
-            if excel_records:
-                st.success(f"Excel knowledge base ready ({len(excel_records)} rows).")
-
-        with tab_blueprint:                              
+    # Knowledge base uploads moved to the "+" popover in the chat input row
+    # (handle_combined_file_uploads()) — the standalone Excel tab is retired.
+    if is_admin:
+        with tab_blueprint:
             b1, b2 = st.columns(2)                       
             with b1:                                     
                 st.subheader("Primary persona")          
