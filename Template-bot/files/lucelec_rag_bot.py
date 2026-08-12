@@ -34,6 +34,8 @@ import stat        # file permission constants, used to lock down the key file
 import argparse    # reads the options you type after the filename, like --demo
 import html        # safely escapes HTML for hover tooltips
 import hmac        # constant-time string comparison for the admin login check
+import hashlib     # PBKDF2 password hashing for the staff account store
+import secrets     # cryptographically random salts/tokens for password hashing
 from collections import Counter    # counts how many times each word appears
 from typing import Optional        # lets us say "this might return nothing"
 from typing import TypedDict, Optional, List # Imports type hinting tools to define the shape of our graph state memory
@@ -200,6 +202,13 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
 """
 
 POLISH_CSS = """
+/* The +/mic buttons sit in narrower columns than the chat input box, so
+   Streamlit's default top-aligned flex row leaves them pinned to the top
+   instead of centered on the taller input. */
+div[data-testid="stHorizontalBlock"]:has([data-testid="stChatInput"]) {
+    align-items: center;
+}
+
 .lucelec-footer {
     background-color: #5DADE2; padding: 1rem; border-radius: 10px;
     display: flex; justify-content: center; align-items: center; gap: 1rem;
@@ -1748,7 +1757,12 @@ LANG_CODES = {
     "English": "en",
     "Spanish": "es",
     "French": "fr",
-    "French Creole (Kwéyòl)": "ht"  # Haitian Creole / Kwéyòl voice code
+    # gTTS has no Kwéyòl or Haitian Creole voice — "ht" is not in
+    # gtts.lang.tts_langs() and raises ValueError immediately, which the
+    # try/except in generate_google_tts() swallows into silent empty
+    # audio. "fr" is the closest working voice since Kwéyòl vocabulary
+    # is largely French-derived.
+    "French Creole (Kwéyòl)": "fr"
 }
 
 def provider_model(name: str) -> str:
@@ -2912,6 +2926,7 @@ def initialize_sidebar_state(state: Optional[dict] = None) -> dict:
     if state is None:
         state = {}
     state.setdefault("page_state", "customer_view")
+    state.setdefault("staff_account", None)
     state.setdefault("ui_language", "English")
     state.setdefault("dark_mode", False)
     state.setdefault("accessibility_settings", {
@@ -2931,26 +2946,168 @@ def initialize_sidebar_state(state: Optional[dict] = None) -> dict:
     return state
 
 
-def authenticate_admin(username: str, password: str) -> bool:
-    """Validate admin login credentials against ADMIN_USERNAME / ADMIN_PASSWORD.
+# =====================================================================
+# STAFF ACCOUNT STORE — multi-user login, replaces the old single
+# ADMIN_USERNAME/ADMIN_PASSWORD check. Accounts persist in
+# .streamlit/users.json next to the existing secrets.toml key store —
+# same directory, same 0600-permission-and-gitignored pattern save_key()
+# already uses, so a key never lands in git by accident.
+# =====================================================================
 
-    Falls back to a demo login ONLY when no admin credentials are configured
-    anywhere (no .env, no secrets.toml) — never once a real value is set,
-    however weak. The old version treated "secret" and "123456789" as
-    synonyms for "not configured" too, which meant an admin could type a
-    password into .env, see the app accept it, and never notice the actual
-    check was still silently comparing against the hard-coded demo password.
-    That is a backdoor, not a fallback, so it is gone.
+# PBKDF2 iteration count. 200k is OWASP's 2023 floor for PBKDF2-SHA256 —
+# expensive enough to resist offline cracking of a stolen users.json,
+# cheap enough that a login click doesn't noticeably lag.
+_PBKDF2_ITERATIONS = 200_000
 
-    Comparisons use hmac.compare_digest so a network observer timing the
-    response cannot learn the password one character at a time.
+
+def _hash_password(password: str, salt: bytes) -> str:
+    """Derive a PBKDF2-SHA256 hash for `password` under `salt`, hex-encoded."""
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _PBKDF2_ITERATIONS).hex()
+
+
+def _secrets_dir() -> str:
+    """Resolve the .streamlit directory ONCE and reuse it for every
+    users.json read/write/gitignore call in this module.
+
+    project_path() picks whichever of BASE_DIR/WORKSPACE_ROOT already has
+    the exact joined path — calling it separately for ".streamlit" vs
+    ".streamlit/.gitignore" vs ".streamlit/users.json" can each resolve
+    to a DIFFERENT existing candidate (e.g. a legacy WORKSPACE_ROOT-level
+    .streamlit/.gitignore already existed here from the old secrets.toml
+    setup, while users.json itself only ever existed at the BASE_DIR
+    level) — silently writing the gitignore entry into a directory that
+    isn't the one users.json actually lives in, leaving the real file
+    unprotected. Resolving the directory exactly once and joining
+    filenames onto it locally removes that split.
     """
-    expected_user = os.getenv("ADMIN_USERNAME") or "vsmith"
-    expected_pass = os.getenv("ADMIN_PASSWORD") or "secret"
+    return project_path(SECRETS_DIR)
 
-    user_ok = hmac.compare_digest(username.encode("utf-8"), expected_user.encode("utf-8"))
-    pass_ok = hmac.compare_digest(password.encode("utf-8"), expected_pass.encode("utf-8"))
-    return user_ok and pass_ok
+
+def _users_gitignore_entry() -> None:
+    """Make sure .streamlit/.gitignore covers users.json, same as secrets.toml."""
+    secrets_dir = _secrets_dir()
+    os.makedirs(secrets_dir, exist_ok=True)
+    gitignore = os.path.join(secrets_dir, ".gitignore")
+    existing = ""
+    if os.path.exists(gitignore):
+        with open(gitignore, "r", encoding="utf-8") as f:
+            existing = f.read()
+    missing = [name for name in ("secrets.toml", "users.json") if name not in existing]
+    if missing:
+        with open(gitignore, "a", encoding="utf-8") as f:
+            if existing and not existing.endswith("\n"):
+                f.write("\n")
+            for name in missing:
+                f.write(name + "\n")
+
+
+def _seed_users() -> dict:
+    """First run, no users.json yet: seed one account from
+    ADMIN_USERNAME/ADMIN_PASSWORD (or the same demo defaults the old
+    single-admin check fell back to), so an existing .env-based setup
+    keeps working as the first staff account instead of losing access."""
+    username = os.getenv("ADMIN_USERNAME") or "vsmith"
+    password = os.getenv("ADMIN_PASSWORD") or "secret"
+    salt = secrets.token_bytes(16)
+    users = {
+        username: {
+            "display_name": username,
+            "salt": salt.hex(),
+            "password_hash": _hash_password(password, salt),
+        }
+    }
+    _save_users(users)
+    return users
+
+
+def _load_users() -> dict:
+    """Load the staff account store, seeding it on first run."""
+    path = os.path.join(_secrets_dir(), "users.json")
+    if not os.path.exists(path):
+        return _seed_users()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return _seed_users()
+
+
+def _save_users(users: dict) -> None:
+    """Write the staff account store to disk, locked to owner-only (0600)."""
+    _users_gitignore_entry()
+    path = os.path.join(_secrets_dir(), "users.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(users, f, indent=2)
+    try:
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass
+
+
+def authenticate_staff(username: str, password: str) -> Optional[dict]:
+    """Validate login against the staff account store.
+
+    Returns {"username", "display_name"} on success, None on failure.
+    Always runs one PBKDF2 derivation even for an unknown username, so a
+    wrong username and a wrong password take the same amount of time —
+    no username-enumeration timing oracle. The final compare uses
+    hmac.compare_digest for the same reason the old single-admin check
+    did: a network observer can't learn the hash one byte at a time.
+    """
+    users = _load_users()
+    account = users.get(username)
+    if not account:
+        _hash_password(password, secrets.token_bytes(16))  # constant-time decoy
+        return None
+    salt = bytes.fromhex(account["salt"])
+    candidate_hash = _hash_password(password, salt)
+    if hmac.compare_digest(candidate_hash, account["password_hash"]):
+        return {"username": username, "display_name": account.get("display_name", username)}
+    return None
+
+
+def list_staff_accounts() -> list:
+    """All staff accounts, for the admin-only account-management panel."""
+    users = _load_users()
+    return [
+        {"username": u, "display_name": v.get("display_name", u)}
+        for u, v in sorted(users.items())
+    ]
+
+
+def add_staff_account(username: str, password: str, display_name: str = "") -> tuple:
+    """Create a new staff account. Returns (ok, message)."""
+    username = username.strip()
+    if not username or not password:
+        return False, "Username and password are required."
+    users = _load_users()
+    if username in users:
+        return False, "That username already exists."
+    salt = secrets.token_bytes(16)
+    users[username] = {
+        "display_name": display_name.strip() or username,
+        "salt": salt.hex(),
+        "password_hash": _hash_password(password, salt),
+    }
+    _save_users(users)
+    return True, f"Account '{username}' created."
+
+
+def remove_staff_account(username: str) -> tuple:
+    """Delete a staff account. Returns (ok, message).
+
+    Refuses to remove the last remaining account — that would lock every
+    staff member out of the admin view with no way back in short of
+    hand-editing users.json on the server.
+    """
+    users = _load_users()
+    if username not in users:
+        return False, "No such account."
+    if len(users) <= 1:
+        return False, "Can't remove the last account — that would lock everyone out."
+    users.pop(username)
+    _save_users(users)
+    return True, f"Account '{username}' removed."
 
 
 def reset_chat_session(state: Optional[dict] = None) -> dict:
@@ -3353,9 +3510,9 @@ def streamlit_app():
     def set_state(new_state): 
         st.session_state.page_state = new_state 
 
-    # 5. ADMIN LOGIN PORTAL
+    # 5. STAFF LOGIN PORTAL
     if st.session_state.page_state == 'admin_login':
-        st.title("Administrator Login")
+        st.title("Staff Login")
 
         # Brute-force throttle: a Streamlit button can be clicked as fast as
         # a script can drive it, so the login check itself is not a rate
@@ -3382,8 +3539,10 @@ def streamlit_app():
         col1, col2 = st.columns([1, 5])
         with col1:
             if st.button("Login"):
-                if authenticate_admin(username, password):
+                account = authenticate_staff(username, password)
+                if account:
                     st.session_state.login_attempts = 0
+                    st.session_state.staff_account = account
                     set_state('admin_view')
                     st.rerun()
                 else:
@@ -3510,15 +3669,8 @@ def streamlit_app():
                 )
                 sim_language = st.session_state.ui_language
 
-                st.toggle("🌙 Dark mode", key="dark_mode")
-
-                if not is_admin:
-                    st.caption(t("staff_only_caption"))
-                    if st.button(t("admin_login_btn")):
-                        set_state('admin_login')
-                        st.rerun()
-
                 st.subheader(t("accessibility_header"))
+                st.toggle("🌙 Dark mode", key="dark_mode")
                 a11y_state = st.session_state.accessibility_settings
                 a11y_state["tts"] = st.checkbox(t("tts_checkbox"), value=a11y_state.get("tts", False))
 
@@ -3543,12 +3695,32 @@ def streamlit_app():
                 # top of streamlit_app() — see "2. ACCESSIBILITY CSS INJECTION".
 
                 if is_admin:
-                    st.success("Signed in as Administrator")
-                    if st.button("Log out"):
-                        set_state('customer_view')
-                        st.rerun()
                     st.divider()
+                    st.subheader("Staff accounts")
+                    current_username = (st.session_state.staff_account or {}).get("username")
+                    for acc in list_staff_accounts():
+                        acc_col, remove_col = st.columns([4, 1])
+                        with acc_col:
+                            label = f"👤 {acc['display_name']} (`{acc['username']}`)"
+                            st.write(label + (" — you" if acc["username"] == current_username else ""))
+                        with remove_col:
+                            if acc["username"] != current_username:
+                                if st.button("🗑️", key=f"remove_staff_{acc['username']}",
+                                             use_container_width=True, help=f"Remove {acc['display_name']}"):
+                                    ok, msg = remove_staff_account(acc["username"])
+                                    (st.success if ok else st.error)(msg)
+                                    st.rerun()
+                    with st.expander("➕ Add staff account"):
+                        new_username = st.text_input("Username", key="new_staff_username")
+                        new_display = st.text_input("Display name (optional)", key="new_staff_display")
+                        new_password = st.text_input("Password", type="password", key="new_staff_password")
+                        if st.button("Create account"):
+                            ok, msg = add_staff_account(new_username, new_password, new_display)
+                            (st.success if ok else st.error)(msg)
+                            if ok:
+                                st.rerun()
 
+                    st.divider()
                     st.subheader("AI model")
                     names  = [p["name"] for p in provider_status()]
                     labels = {p["name"]: f"{p['label']} {'✅' if p['ready'] else '⚪'}" for p in provider_status()}
@@ -3614,6 +3786,31 @@ def streamlit_app():
                         reset_chat_session(st.session_state)
                         st.rerun()
 
+        # ACCOUNT WIDGET — pinned to the bottom of the sidebar, always
+        # visible (not buried inside the collapsible Settings panel like
+        # the old single-admin login button was). Shows who's signed in,
+        # or a sign-in prompt for a signed-out visitor.
+        st.divider()
+        account = st.session_state.get("staff_account")
+        account_info_col, account_action_col = st.columns([3, 2])
+        if account:
+            with account_info_col:
+                st.markdown(f"👤 **{account['display_name']}**")
+                st.caption("Staff account")
+            with account_action_col:
+                if st.button("Log out", use_container_width=True, key="account_logout_btn"):
+                    st.session_state.staff_account = None
+                    set_state('customer_view')
+                    st.rerun()
+        else:
+            with account_info_col:
+                st.markdown("👤 Guest")
+                st.caption(t("staff_only_caption"))
+            with account_action_col:
+                if st.button(t("admin_login_btn"), use_container_width=True, key="account_login_btn"):
+                    set_state('admin_login')
+                    st.rerun()
+
     # 8. UNIFIED TAB DECLARATIONS
     # Knowledge base uploads (Excel/PDF/text) moved to the "+" popover next
     # to the chat input (see handle_combined_file_uploads()) — the old
@@ -3645,15 +3842,22 @@ def streamlit_app():
         if "messages" not in st.session_state:
             st.session_state.messages = []
 
-        for m in st.session_state.messages:
-            msg_avatar = bot_avatar if m["role"] == "assistant" else None
-            with st.chat_message(m["role"], avatar=msg_avatar):
-                st.markdown(m["content"])
-                if m.get("hits"):
-                    with st.expander(t("sources_used")):
-                        for i, h in enumerate(m["hits"], 1):
-                            st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")
-                            st.caption(h["text"])
+        # Message history renders inside its own fixed-height, independently
+        # scrollable container — a separate UI element from the chat input
+        # row below (created later in this function). Scrolling through
+        # past messages no longer drags the input/mic/upload row along
+        # with it; that row stays put right under this box.
+        chat_container = st.container(height=480)
+        with chat_container:
+            for m in st.session_state.messages:
+                msg_avatar = bot_avatar if m["role"] == "assistant" else None
+                with st.chat_message(m["role"], avatar=msg_avatar):
+                    st.markdown(m["content"])
+                    if m.get("hits"):
+                        with st.expander(t("sources_used")):
+                            for i, h in enumerate(m["hits"], 1):
+                                st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")
+                                st.caption(h["text"])
 
         if "pending_voice_text" not in st.session_state:
             st.session_state.pending_voice_text = ""
@@ -3676,63 +3880,71 @@ def streamlit_app():
             paths produce an identical reply/TTS/sources experience."""
             st.session_state.messages.append({"role": "user", "content": q})
             persist_active_chat()
-            with st.chat_message("user"):
-                st.markdown(q)
+            # Render the live exchange into the same scrollable container
+            # the history loop uses above — otherwise it would render at
+            # this call site instead (squeezed into the narrow input-row
+            # column), only jumping into the container on the next rerun.
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(q)
 
-            # GENERATE ASSISTANT REPLY
-            with st.chat_message("assistant", avatar=bot_avatar):
-                with st.spinner(t("retrieving_spinner")):
-                    excel_row_records = st.session_state.get("excel_row_records", [])
-                    pdf_chunks = st.session_state.get("excel_pdf_chunks", [])
-                    txt_chunks = st.session_state.get("excel_txt_chunks", [])
-                    upload_chunks = pdf_chunks + txt_chunks
-                    # Uploaded PDFs/text files join the same TF-IDF index as
-                    # the static source_documents/*.md files, so retrieve_chunks
-                    # scores them against THIS question and only the relevant
-                    # bits get cited — not the whole document dumped every time.
-                    active_index = build_index(index["chunks"] + upload_chunks) if upload_chunks else index
-                    out = answer(q, active_index, user, excel_data=excel_row_records, language=sim_language)
+                # GENERATE ASSISTANT REPLY
+                with st.chat_message("assistant", avatar=bot_avatar):
+                    with st.spinner(t("retrieving_spinner")):
+                        excel_row_records = st.session_state.get("excel_row_records", [])
+                        pdf_chunks = st.session_state.get("excel_pdf_chunks", [])
+                        txt_chunks = st.session_state.get("excel_txt_chunks", [])
+                        upload_chunks = pdf_chunks + txt_chunks
+                        # Uploaded PDFs/text files join the same TF-IDF index as
+                        # the static source_documents/*.md files, so retrieve_chunks
+                        # scores them against THIS question and only the relevant
+                        # bits get cited — not the whole document dumped every time.
+                        active_index = build_index(index["chunks"] + upload_chunks) if upload_chunks else index
+                        out = answer(q, active_index, user, excel_data=excel_row_records, language=sim_language)
 
-                st.write_stream(_stream_words(out["reply"]))
+                    st.write_stream(_stream_words(out["reply"]))
 
-                # --- UPDATED: TTS Generation with Engine Router ---
-                if st.session_state.accessibility_settings.get("tts"):
-                    with st.spinner(t("generating_audio_spinner")):
-                        engine = st.session_state.accessibility_settings.get("tts_engine", "Google (Free)")
+                    # --- UPDATED: TTS Generation with Engine Router ---
+                    if st.session_state.accessibility_settings.get("tts"):
+                        with st.spinner(t("generating_audio_spinner")):
+                            engine = st.session_state.accessibility_settings.get("tts_engine", "Google (Free)")
 
-                        # ElevenLabs has no French Creole (Kwéyòl) support — it
-                        # is not one of its listed languages — so feeding it
-                        # Kwéyòl text produces mispronounced/garbled audio.
-                        # gTTS's "ht" (Haitian Creole) is the closer, if still
-                        # imperfect, match. Force that route regardless of the
-                        # engine picked, so the failure mode is "slightly off
-                        # accent" instead of "wrong language entirely."
-                        if engine == "ElevenLabs (Credits)" and sim_language == "French Creole (Kwéyòl)":
-                            st.caption(t("kweyol_elevenlabs_caption"))
-                            audio_data = generate_google_tts(out["reply"], language=sim_language)
-                        elif engine == "ElevenLabs (Credits)":
-                            audio_data = generate_elevenlabs_tts(out["reply"])
-                        else:
-                            # FIXED: Passes sim_language to gTTS
-                            audio_data = generate_google_tts(out["reply"], language=sim_language)
+                            # ElevenLabs has no French Creole (Kwéyòl) support — it
+                            # is not one of its listed languages — so feeding it
+                            # Kwéyòl text produces mispronounced/garbled audio.
+                            # Route to gTTS's "fr" voice instead (see LANG_CODES —
+                            # "ht" isn't a valid gTTS language code and raised
+                            # ValueError, silently producing no audio at all).
+                            # Force that route regardless of the engine picked,
+                            # so the failure mode is "French accent on Kwéyòl
+                            # words" instead of "wrong language entirely" or
+                            # dead silence.
+                            if engine == "ElevenLabs (Credits)" and sim_language == "French Creole (Kwéyòl)":
+                                st.caption(t("kweyol_elevenlabs_caption"))
+                                audio_data = generate_google_tts(out["reply"], language=sim_language)
+                            elif engine == "ElevenLabs (Credits)":
+                                audio_data = generate_elevenlabs_tts(out["reply"])
+                            else:
+                                # FIXED: Passes sim_language to gTTS
+                                audio_data = generate_google_tts(out["reply"], language=sim_language)
 
-                        # Play the generated byte stream, but keep the player
-                        # widget itself hidden by default — an expander gives
-                        # a "show playback" option for relistening later.
-                        if audio_data:
-                            with st.expander(t("replay_audio_expander"), expanded=False):
-                                st.audio(audio_data, format="audio/mp3", autoplay=True)
-                # --------------------------------------------------
+                            # Play the generated byte stream, but keep the player
+                            # widget itself hidden by default — an expander gives
+                            # a "show playback" option for relistening later.
+                            if audio_data:
+                                with st.expander(t("replay_audio_expander"), expanded=False):
+                                    st.audio(audio_data, format="audio/mp3", autoplay=True)
+                    # --------------------------------------------------
 
-                st.caption(f"lane: {out.get('intent', '-')} · "
-                           f"register: {out.get('register', '-')} · "
-                           f"answered by: {out['provider']} · {out['model']}")
+                    st.caption(f"lane: {out.get('intent', '-')} · "
+                               f"register: {out.get('register', '-')} · "
+                               f"answered by: {out['provider']} · {out['model']}")
 
-                if out["hits"]:
-                    with st.expander(t("sources_used")):
-                        for i, h in enumerate(out["hits"], 1):
-                            st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")
-                            st.caption(h["text"])
+                    if out["hits"]:
+                        with st.expander(t("sources_used")):
+                            for i, h in enumerate(out["hits"], 1):
+                                st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")
+                                st.caption(h["text"])
 
             # Save assistant reply to history
             st.session_state.messages.append(
@@ -3770,17 +3982,10 @@ def streamlit_app():
             elif not voice_transcript:
                 st.info(t("mic_not_captured"))
 
-        # Knowledge-base uploads (Excel/PDF/text) are admin/staff tooling
-        # only — never customer-visible — so the "+" popover only appears
-        # in the input row for admins; customers get the plain two-column
-        # layout.
-        if is_admin:
-            col_add, col_input, col_mic = st.columns([1, 8, 1])
-            with col_add:
-                with st.popover("➕", help="Upload Excel, PDF, or TXT files"):
-                    handle_combined_file_uploads()
-        else:
-            col_input, col_mic = st.columns([9, 1])
+        col_add, col_input, col_mic = st.columns([1, 8, 1])
+        with col_add:
+            with st.popover("➕", help="Upload Excel, PDF, or TXT files"):
+                handle_combined_file_uploads()
         with col_input:
             if q := st.chat_input(t("ask_prompt")):
                 process_chat_message(q)
