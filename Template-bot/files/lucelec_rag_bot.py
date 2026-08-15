@@ -2231,6 +2231,12 @@ def _phrase_in(phrase: str, text: str) -> bool:
     return re.search(rf"\b{re.escape(phrase)}\b", text) is not None
 
 
+# A short filler word tacked onto the front of a real follow-up question
+# must not steal the classification from the question behind it — e.g.
+# "ok what is the first step?" is a domain question, not chitchat.
+LEADING_FILLER = ("ok", "okay", "well", "so", "alright", "right", "yeah", "yep")
+
+
 def classify_intent(message: str) -> str:
     """Decide which lane a message belongs in: "social" or "domain".
 
@@ -2241,17 +2247,29 @@ def classify_intent(message: str) -> str:
     low = message.lower().strip()                    # tidy it up for matching
     words = low.split()                              # split into words to measure length
 
+    # Strip ONE leading filler word, but only when something substantial
+    # follows it. A bare "ok" (or "ok, thanks") must still be social — only
+    # a filler word followed by an actual question gets unwrapped.
+    if len(words) > 1 and words[0].strip(",.!") in LEADING_FILLER:
+        rest = low.split(None, 1)[1]
+        if len(rest.split()) >= 2:                   # enough left to be a real question
+            low = rest
+            words = low.split()
+
     # Any electricity word at all means this is a real question, even if it
     # also says hello. "Hi, how much does an AC cost?" is a domain question.
     domain_words = ["kwh", "bill", "tariff", "rate", "cost", "appliance", "fridge",
                     "electricity", "power", "meter", "watt", "energy", "ac",
                     "air condition", "heater", "solar", "charge", "pay", "unit",
-                    "expensive", "cheap", "save", "much", 
+                    "expensive", "cheap", "save", "much",
                     "calculate", "calc", "estimate", "math",
                     "domestic", "commercial", "industrial", "monthly", "yearly",
                     "monthly cost", "yearly cost", "monthly electricity", "price",
                     "difference", "compare", "between", "southern", "service location",
-                    "vieux fort", "customer service", "technical presence"] # FIXED: Added customer segments and common questions! 
+                    "vieux fort", "customer service", "technical presence",
+                    "register", "registration", "account", "connection", "connect",
+                    "new connection", "sign up", "signup", "apply", "application",
+                    "new customer"] # FIXED: Added registration/new-connection vocabulary so "can you help me register for an account?" routes to domain, not the fact-free social lane.
     if any(_phrase_in(w, low) for w in domain_words):   # anything domain-ish present?
         return "domain"                              # treat it as a real question
 

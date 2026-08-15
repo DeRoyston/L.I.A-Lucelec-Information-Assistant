@@ -118,9 +118,18 @@ for msg in social_cases:
 domain_cases = ["how much does an AC cost to run",
                 "what appliance uses the most electricity",
                 "explain my bill",
-                "hi, how much does a fridge cost"]   # greeting + real question
+                "hi, how much does a fridge cost",   # greeting + real question
+                "can you help me register for an account?",  # "can you help" must not win
+                "ok what is the first step?"]        # leading filler must not win
 for msg in domain_cases:
     check(f"'{msg[:34]}' → domain", b.classify_intent(msg) == "domain",
+          f"got {b.classify_intent(msg)}")
+
+# A leading filler word must only be stripped when a real question follows
+# it — a bare filler word, or filler + one more word, must stay social.
+filler_only_cases = ["ok, thanks", "ok", "okay then"]
+for msg in filler_only_cases:
+    check(f"'{msg}' stays social", b.classify_intent(msg) == "social",
           f"got {b.classify_intent(msg)}")
 
 # The bug I fixed earlier: "yo" matching inside "you".
