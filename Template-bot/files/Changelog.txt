@@ -1,0 +1,144 @@
+LUCELEC L.I.A — Feature Changelog
+Customer Features
+AI Chat Assistant
+Ask LUCELEC-related questions in plain language.
+
+Appliance Cost Help
+Estimate how much appliances cost to run.
+
+Appliance Comparison
+Compare two appliances by power use and yearly cost.
+
+Cost Calculator Tab
+Manually enter watts, hours, price, and rate.
+
+Location Status Tab
+Check if an area is running, down, or under maintenance.
+
+Maintenance Notices
+View scheduled maintenance information by location.
+
+All-Location Status Overview
+See a table of service status across all listed areas.
+
+Area Tariff Overview
+View domestic and commercial tariff examples by location.
+
+Parish Hover Info
+Hover over parish names to see quick location notes.
+
+Multi-Language UI
+Use the app in English, Spanish, French, or Kwéyòl.
+
+Translated Bot Replies
+Receive assistant replies in the selected language.
+
+Dark Mode
+Switch the app to a dark theme.
+
+Font Size Control
+Increase or decrease the app’s text size.
+
+Text-to-Speech
+Let the app read assistant replies aloud.
+
+Speech-to-Text
+Ask questions using the microphone.
+
+Voice Recorder Button
+Capture spoken questions directly in the chat.
+
+Chat History
+Keep previous messages visible in the current session.
+
+Multiple Chats
+Start, switch, and delete separate chat threads.
+
+Auto Chat Titles
+Chats are automatically named after the first question.
+
+Source Citations
+View the documents used to support an answer.
+
+File Upload in Chat
+Upload Excel, PDF, or text files for extra context.
+
+LUCELEC Branding
+Branded logo, banner, mascot, and footer.
+
+Loading Animation
+Shows a LUCELEC loading badge during app actions.
+
+Admin Features
+Admin Login
+Staff can access protected admin tools.
+
+Email Verification Login
+Admins confirm login using a code sent by email.
+
+Login Email Field
+Admins enter an email address during login.
+
+SMTP Email Support
+Verification codes can be sent through Gmail SMTP.
+
+Local Demo Code Fallback
+Shows the code on screen if SMTP is not configured.
+
+Login Attempt Lockout
+Temporarily blocks repeated failed login attempts.
+
+Staff Account Management
+Add, view, and remove staff accounts.
+
+Secure Password Hashing
+Staff passwords are stored as hashes, not plain text.
+
+Admin-Only Tabs
+Extra tools appear only after staff login.
+
+Blueprint Tab
+View the bot persona and empathy map.
+
+Web Harvest Tab
+Fetch approved LUCELEC web pages for review.
+
+Pending Review Workflow
+Web content must be approved before use.
+
+Source Testing Tab
+Test which documents are retrieved for a question.
+
+Evaluation Tab
+Run test questions and check bot performance.
+
+Knowledge Base Reload
+Refresh indexed documents after updates.
+
+AI Provider Selection
+Choose between supported AI providers.
+
+AI Connection Test
+Test whether the selected provider is working.
+
+API Key Panel
+Add or replace AI API keys.
+
+Masked Secrets Display
+Keys are hidden except for safe partial previews.
+
+Document Index Metrics
+See how many knowledge chunks are loaded.
+
+Admin Location Data Note
+Shows staff guidance about location status data.
+
+Tariff Page Tracking
+Admins can fetch tariff pages into review.
+
+Approve or Reject Web Content
+Staff decide whether harvested content becomes usable.
+
+Staff Logout
+Admins can securely return to guest mode.
+This can be reverted to the original at any time
