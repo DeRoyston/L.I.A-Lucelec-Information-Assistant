@@ -480,6 +480,48 @@ check("answer() accepts persona_name/persona_who and still replies",
 
 
 # =====================================================================
+section("14 · Retrieval vocabulary gaps (customer wording vs. document wording)")
+# =====================================================================
+
+# expand_query_terms() must add known synonyms and leave everything else
+# untouched — a pure, safe-by-default transformation.
+check("expand_query_terms adds connection/application for 'account'",
+      set(b.expand_query_terms(["account"])) >= {"account", "connection", "application"},
+      b.expand_query_terms(["account"]))
+check("expand_query_terms is a no-op for terms with no synonym entry",
+      b.expand_query_terms(["fridge", "kwh"]) == ["fridge", "kwh"],
+      b.expand_query_terms(["fridge", "kwh"]))
+check("expand_query_terms never drops the original terms",
+      "account" in b.expand_query_terms(["account"]),
+      b.expand_query_terms(["account"]))
+
+# The actual transcript bug: this exact query must now surface the real
+# new-connections procedure, not just the homepage nav dump.
+hits = b.retrieve_chunks("can you help me create an account", index, k=5)
+hit_sources = [h["source"] for h in hits]
+check("'create an account' retrieves the new-connections document",
+      "web-content-new-connections.md" in hit_sources, hit_sources)
+check("'create an account' ranks new-connections above the homepage nav dump",
+      hits and hits[0]["source"] == "web-content-new-connections.md",
+      hit_sources)
+
+# Regression guard: an unrelated query must not be affected by the
+# synonym table (none of its terms are trigger words).
+unrelated_hits = b.retrieve_chunks("how much does an AC cost to run", index, k=3)
+check("unrelated query retrieval is unaffected by the synonym table",
+      unrelated_hits and unrelated_hits[0]["source"] != "web-content-new-connections.md",
+      [h["source"] for h in unrelated_hits])
+
+# End-to-end: the offline pipeline (no API key needed, see Section 6)
+# must now cite the real document for the transcript's exact question.
+with quiet():
+    account_answer = b.answer("can you help me create an account?", index, verified)
+check("offline answer to 'create an account' cites the new-connections document",
+      any(h["source"] == "web-content-new-connections.md" for h in account_answer.get("hits", [])),
+      [h["source"] for h in account_answer.get("hits", [])])
+
+
+# =====================================================================
 section("RESULTS")
 # =====================================================================
 total = len(PASSES) + len(FAILS)

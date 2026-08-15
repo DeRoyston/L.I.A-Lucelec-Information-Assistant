@@ -1682,6 +1682,34 @@ def build_index(chunks: list) -> dict:
     return {"chunks": chunks, "idf": idf}            # the "index" is the chunks plus these scores
 
 
+# Words customers actually type that never literally appear in the
+# approved source documents, mapped to the vocabulary the documents DO
+# use. retrieve_chunks() is plain TF-IDF keyword overlap with no semantic
+# understanding (see its TODO_students note below), so "create an
+# account" and "new connection" score zero overlap even though they're
+# the same request. This bridges that specific, demonstrated gap without
+# an embeddings model. Keep this table small — only add an entry once
+# you've measured a real mismatch, the same way "account" was added here.
+QUERY_SYNONYMS = {
+    "account": ["connection", "application"],
+    "create":  ["application", "applying"],
+    "open":    ["application", "applying"],
+}
+
+
+def expand_query_terms(q_terms: list) -> list:
+    """Add each term's known synonyms to the scoring bag, so a customer's
+    wording and a document's wording can overlap even when the exact
+    words differ. A term with no entry in QUERY_SYNONYMS passes through
+    unchanged, and a synonym absent from a given chunk contributes 0 to
+    that chunk's score (see idf.get(t, 0.0) below) — so this is a safe
+    no-op for every query that doesn't hit the table."""
+    expanded = list(q_terms)
+    for t in q_terms:
+        expanded.extend(QUERY_SYNONYMS.get(t, []))
+    return expanded
+
+
 def retrieve_chunks(query: str, index: dict, k: int = TOP_K) -> list:
     """Score every chunk against the question and return only the best k.
 
@@ -1694,6 +1722,7 @@ def retrieve_chunks(query: str, index: dict, k: int = TOP_K) -> list:
     q_terms = tokenize(query)                        # clean up the question into words
     if not q_terms:                                  # nothing searchable left?
         return []                                    # return an empty list
+    q_terms = expand_query_terms(q_terms)             # FIXED: bridge customer-vs-document vocabulary gaps (e.g. "account" -> "connection")
 
     idf = index["idf"]                               # the rarity scores from build_index
     scored = []                                      # will hold (score, chunk) pairs
