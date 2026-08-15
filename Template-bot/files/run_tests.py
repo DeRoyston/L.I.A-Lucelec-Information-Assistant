@@ -423,6 +423,63 @@ for fn_name in ("add_new_chat", "delete_chat"):
 
 
 # =====================================================================
+section("13 · Persona identity (session-scoped, no fabricated names)")
+# =====================================================================
+
+# initialize_sidebar_state() must seed persona fields to None, not the
+# Week 1 teaching example and not even a vague "a customer" placeholder —
+# the prompt builders supply the safe "don't guess" default themselves.
+fresh_state = b.initialize_sidebar_state({})
+check("initialize_sidebar_state seeds persona_name to None",
+      fresh_state.get("persona_name") is None, fresh_state.get("persona_name"))
+check("initialize_sidebar_state seeds persona_who to None",
+      fresh_state.get("persona_who") is None, fresh_state.get("persona_who"))
+
+# build_prompt() must not fall back to the module-level PERSONA teaching
+# example. Poison it with a sentinel to prove real decoupling, not just
+# "the test happens not to notice".
+_real_persona_who = b.PERSONA["who"]
+b.PERSONA["who"] = "SENTINEL_WEEK1_EXAMPLE_MUST_NOT_LEAK"
+try:
+    no_persona_prompt = b.build_prompt("how much does a fridge cost to run", [],
+                                        b.DEFAULT_REGISTER, None)
+    check("build_prompt with no persona_who does not leak the module PERSONA",
+          "SENTINEL_WEEK1_EXAMPLE_MUST_NOT_LEAK" not in no_persona_prompt,
+          no_persona_prompt[:200])
+    check("build_prompt with no persona_who states it must not guess",
+          "do not guess" in no_persona_prompt.lower(),
+          no_persona_prompt[:200])
+
+    named_prompt = b.build_prompt("how much does a fridge cost to run", [],
+                                   b.DEFAULT_REGISTER, None,
+                                   persona_who="a customer named Ms. Felicien")
+    check("build_prompt with a real persona_who includes it",
+          "Ms. Felicien" in named_prompt, named_prompt[:200])
+finally:
+    b.PERSONA["who"] = _real_persona_who
+
+# build_social_prompt() is the social-lane analogue — same two guarantees.
+no_persona_social = b.build_social_prompt(None, None, "English")
+check("build_social_prompt with no persona does not mention Augustin",
+      "Augustin" not in no_persona_social, no_persona_social[:200])
+check("build_social_prompt with no persona states it must not guess",
+      "do not guess" in no_persona_social.lower(), no_persona_social[:200])
+
+named_social = b.build_social_prompt("Ms. Felicien", "a customer named Ms. Felicien", "English")
+check("build_social_prompt with a real persona includes it",
+      "Ms. Felicien" in named_social, named_social[:200])
+
+# End-to-end: answer() must accept persona_name/persona_who without
+# raising, and thread them all the way through GraphState.
+with quiet():
+    persona_answer = b.answer("how much does a fridge cost to run", index, verified,
+                               persona_name="Ms. Felicien",
+                               persona_who="a customer named Ms. Felicien")
+check("answer() accepts persona_name/persona_who and still replies",
+      len(persona_answer["reply"]) > 0, persona_answer.get("reply", "")[:80])
+
+
+# =====================================================================
 section("RESULTS")
 # =====================================================================
 total = len(PASSES) + len(FAILS)

@@ -2021,12 +2021,25 @@ This prompt is a draft. When the bot gives a poor answer, fix it here first, the
 """
 
 def build_prompt(question: str, hits: list, register: str = DEFAULT_REGISTER,
-                 territory: Optional[dict] = None, excel_context: str = "", language: str = "English") -> str:
-    """Fill in MASTER_PROMPT with blueprint, document chunks, Excel knowledge, and language."""
+                 territory: Optional[dict] = None, excel_context: str = "", language: str = "English",
+                 persona_who: Optional[str] = None) -> str:
+    """Fill in MASTER_PROMPT with blueprint, document chunks, Excel knowledge, and language.
+
+    persona_who comes from THIS session's "who's in front of you" sidebar
+    field — never the Week 1 PERSONA teaching example (that dict is design
+    documentation, not live session data), and never guessed when unknown.
+    """
+    # FIXED: Was PERSONA["who"] — leaked the Week 1 teaching example's fake
+    # name/backstory into every real conversation that never touched the
+    # sidebar field. Now session-scoped, with an explicit anti-guessing
+    # instruction when the session hasn't told us who this is.
+    persona_text = persona_who or (
+        "a LUCELEC customer whose name has not been given — do not guess or invent one"
+    )
     return MASTER_PROMPT.format(
         bot_name=BOT_NAME,
         client=CLIENT,
-        persona=PERSONA["who"],
+        persona=persona_text,
         feeling=EMPATHY_MAP["feels"],
         segment=(territory or {}).get("notes", "unknown"),
         desk=(territory or {}).get("desk", ESCALATION_LINE),
@@ -2330,18 +2343,32 @@ def social_intent_kind(message: str) -> str:
     return "chitchat"                                # a safe general-purpose reply
 
 
-def social_reply(message: str, register: str, language: str = "English") -> dict:
+def build_social_prompt(persona_name: Optional[str], persona_who: Optional[str], language: str) -> str:
+    """Fill in SOCIAL_PROMPT. Same rule as build_prompt(): persona_name/
+    persona_who come from THIS session's sidebar field, never the Week 1
+    PERSONA teaching example, and never guessed when unknown."""
+    # FIXED: Was PERSONA.get("name"/"who") — same leak as build_prompt(),
+    # in the lane with the LEAST grounding (no documents, so nothing stops
+    # the model running with a fabricated identity once it's been handed one).
+    name = persona_name or "the customer"
+    who = persona_who or (
+        "a LUCELEC customer whose name has not been given — do not guess or invent one"
+    )
+    return SOCIAL_PROMPT.format(
+        bot_name=BOT_NAME,
+        client=CLIENT,
+        persona_name=name,
+        persona_who=who,
+        language=language
+    )
+
+
+def social_reply(message: str, register: str, language: str = "English",
+                  persona_name: Optional[str] = None, persona_who: Optional[str] = None) -> dict:
     """Answer small talk in the user's chosen language."""
     kind = social_intent_kind(message)
 
-    # FIXED: Added language=language to prompt formatting
-    system = SOCIAL_PROMPT.format(
-        bot_name=BOT_NAME,
-        client=CLIENT,
-        persona_name=PERSONA.get("name", "a customer"),
-        persona_who=PERSONA.get("who", "is a LUCELEC customer"),
-        language=language
-    )
+    system = build_social_prompt(persona_name, persona_who, language)
 
     fallback = SOCIAL_FALLBACKS.get(kind, SOCIAL_FALLBACKS["chitchat"])
     fallback = fallback.format(bot_name=BOT_NAME, client=CLIENT)
@@ -2491,11 +2518,13 @@ def calculator_tool(watts: float, hours_per_day: float) -> str:
 # =====================================================================
 
 class GraphState(TypedDict):
-    messages: Annotated[list, add_messages] 
-    user: dict 
-    index: dict 
+    messages: Annotated[list, add_messages]
+    user: dict
+    index: dict
     excel_data: list # <--- MUST BE HERE
     language: str # NEW: Tracks the user's chosen language
+    persona_name: Optional[str] # Confirmed customer name for THIS session, or None
+    persona_who: Optional[str] # Confirmed customer description for THIS session, or None
     register: str # The tone to dress the final reply in
     territory: Optional[dict] # Business rules
     hits: list # Document chunks used
@@ -2531,9 +2560,11 @@ def node_social(state: GraphState):
     
     # FIXED: Passes state["language"] into social_reply!
     chat = social_reply(
-        user_msg, 
-        state["register"], 
-        language=state.get("language", "English")
+        user_msg,
+        state["register"],
+        language=state.get("language", "English"),
+        persona_name=state.get("persona_name"),
+        persona_who=state.get("persona_who")
     )
     
     return {
@@ -2620,7 +2651,8 @@ def chatbot(state: GraphState):
     ) if excel_records else ""
     
     # 3. Build prompt with Excel context and Language
-    system_prompt = build_prompt(safe_q, hits, state["register"], state["territory"], excel_context=excel_context, language=state["language"])
+    system_prompt = build_prompt(safe_q, hits, state["register"], state["territory"], excel_context=excel_context,
+                                  language=state["language"], persona_who=state.get("persona_who"))
     messages_to_send = [SystemMessage(content=system_prompt)] + state["messages"]
     
     # 4. Dynamic Fallback Loop
@@ -2832,13 +2864,16 @@ bot_app = workflow.compile()
 
 # --- EXECUTION BINDING ---
 
-def classify_and_route(user: dict, message: str, index: dict, excel_data: list = None, language: str = "English") -> dict: 
-    initial_state = { 
-        "messages": [HumanMessage(content=message)], 
-        "user": user, 
-        "index": index, 
-        "excel_data": excel_data or [], 
+def classify_and_route(user: dict, message: str, index: dict, excel_data: list = None, language: str = "English",
+                        persona_name: Optional[str] = None, persona_who: Optional[str] = None) -> dict:
+    initial_state = {
+        "messages": [HumanMessage(content=message)],
+        "user": user,
+        "index": index,
+        "excel_data": excel_data or [],
         "language": language, # NEW: Feed into memory
+        "persona_name": persona_name, # FIXED: Session-scoped, was a module global
+        "persona_who": persona_who,
         "reply": "",
         "hits": [], 
         "escalated": False, 
@@ -2864,9 +2899,10 @@ def classify_and_route(user: dict, message: str, index: dict, excel_data: list =
         "axis": final_state.get("axis", "-"),               # which check stopped it
     }
 
-def answer(question: str, index: dict, user: Optional[dict] = None, excel_data: list = None, language: str = "English") -> dict: 
-    user = user or {"id_verified": True, "mood": DEFAULT_REGISTER, "segment": "Domestic"} 
-    return classify_and_route(user, question, index, excel_data, language)
+def answer(question: str, index: dict, user: Optional[dict] = None, excel_data: list = None, language: str = "English",
+           persona_name: Optional[str] = None, persona_who: Optional[str] = None) -> dict:
+    user = user or {"id_verified": True, "mood": DEFAULT_REGISTER, "segment": "Domestic"}
+    return classify_and_route(user, question, index, excel_data, language, persona_name, persona_who)
 
 # =====================================================================
 # SECTION 10 · THE EVAL SET — how you prove the bot is getting better
@@ -2961,6 +2997,11 @@ def initialize_sidebar_state(state: Optional[dict] = None) -> dict:
     state.setdefault("pending_voice_text", "")
     state.setdefault("show_voice_widget", False)
     state.setdefault("show_settings", False)
+    # Who the bot is actually speaking to THIS session, from the "who's in
+    # front of you" sidebar field — never the Week 1 PERSONA teaching
+    # example, and never guessed. None until a staff member confirms a name.
+    state.setdefault("persona_name", None)
+    state.setdefault("persona_who", None)
     return state
 
 
@@ -3776,12 +3817,19 @@ def streamlit_app():
                 st.subheader(t("user_in_front_header"))
                 c_name = st.text_input(t("customer_name_label"), placeholder=t("customer_name_placeholder"))
 
+                # FIXED: Was mutating the module-level PERSONA dict, which
+                # is shared across every concurrent Streamlit session on
+                # this process — one staff member's typed name could leak
+                # into another staff member's simultaneous chat. Now
+                # session-scoped, and blank stays None (build_prompt()/
+                # build_social_prompt() supply the "don't guess" instruction
+                # themselves) instead of the vague "a customer" placeholder.
                 if c_name.strip():
-                    PERSONA["name"] = c_name.strip()
-                    PERSONA["who"] = f"a customer named {c_name.strip()}"
+                    st.session_state["persona_name"] = c_name.strip()
+                    st.session_state["persona_who"] = f"a customer named {c_name.strip()}"
                 else:
-                    PERSONA["name"] = "a customer"
-                    PERSONA["who"] = "a LUCELEC customer"
+                    st.session_state["persona_name"] = None
+                    st.session_state["persona_who"] = None
 
                 sim_verified = st.checkbox(t("authority_checkbox"), value=True)
                 sim_mood = st.selectbox(t("register_label"), [t("register_default_opt")] + list(TONES.keys()))
@@ -3918,7 +3966,9 @@ def streamlit_app():
                         # scores them against THIS question and only the relevant
                         # bits get cited — not the whole document dumped every time.
                         active_index = build_index(index["chunks"] + upload_chunks) if upload_chunks else index
-                        out = answer(q, active_index, user, excel_data=excel_row_records, language=sim_language)
+                        out = answer(q, active_index, user, excel_data=excel_row_records, language=sim_language,
+                                     persona_name=st.session_state.get("persona_name"),
+                                     persona_who=st.session_state.get("persona_who"))
 
                     st.write_stream(_stream_words(out["reply"]))
 
