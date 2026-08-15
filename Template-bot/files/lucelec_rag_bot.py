@@ -1690,10 +1690,16 @@ def build_index(chunks: list) -> dict:
 # the same request. This bridges that specific, demonstrated gap without
 # an embeddings model. Keep this table small — only add an entry once
 # you've measured a real mismatch, the same way "account" was added here.
+# Note: "account" also matches existing-customer intents (balance, closing
+# an account, account number on a bill) and will surface new-connection
+# content there too. That's a measured, accepted tradeoff, not an oversight:
+# it fires on the intent that was actually demonstrated broken, and
+# MASTER_PROMPT's "say so if the excerpts don't answer" rule is the backstop
+# for the existing-customer case. Revisit if this becomes a real complaint,
+# or when retrieval moves to embeddings.
 QUERY_SYNONYMS = {
     "account": ["connection", "application"],
     "create":  ["application", "applying"],
-    "open":    ["application", "applying"],
 }
 
 
