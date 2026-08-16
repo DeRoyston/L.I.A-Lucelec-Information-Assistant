@@ -2455,10 +2455,17 @@ def social_reply(message: str, register: str, language: str = "English",
 # =====================================================================
 DEFAULT_RATE_PER_KWH = 1.00
 DEFAULT_FUEL_SURCHARGE = 0.255
+# FIXED: The customer-facing calculator (calculator_tool, and everything
+# that calls appliance_cost()/compare_appliances() without an explicit
+# rate) was quoting costs using ONLY DEFAULT_RATE_PER_KWH, silently
+# dropping the fuel variation charge — undercounting every quoted cost by
+# about 20%. This is the one place "the real per-kWh rate" is defined;
+# every default below points at it instead of recomputing it inline.
+DEFAULT_EFFECTIVE_RATE = DEFAULT_RATE_PER_KWH + DEFAULT_FUEL_SURCHARGE
 
 
 def appliance_cost(watts: float, hours_per_day: float,
-                   rate_per_kwh: float = DEFAULT_RATE_PER_KWH) -> dict:
+                   rate_per_kwh: float = DEFAULT_EFFECTIVE_RATE) -> dict:
     """Work out what one appliance costs to run per day, month and year."""
     kwh_day = (watts / 1000.0) * hours_per_day
     return {
@@ -2474,7 +2481,7 @@ def appliance_cost(watts: float, hours_per_day: float,
     }
 
 
-def compare_appliances(a: dict, b: dict, rate: float = DEFAULT_RATE_PER_KWH) -> dict:
+def compare_appliances(a: dict, b: dict, rate: float = DEFAULT_EFFECTIVE_RATE) -> dict:
     """Compare two appliances and work out how long the pricier one takes to pay for itself."""
     ca = appliance_cost(a["watts"], a["hours_per_day"], rate)
     cb = appliance_cost(b["watts"], b["hours_per_day"], rate)
@@ -2527,7 +2534,7 @@ def vampire_power_audit(refrigerator_kwh_year: float, led_bulbs: int, led_watts:
     }
 
 
-def kwh_year_to_monthly_cost(kwh_per_year: float, rate_per_kwh: float = DEFAULT_RATE_PER_KWH + DEFAULT_FUEL_SURCHARGE) -> dict:
+def kwh_year_to_monthly_cost(kwh_per_year: float, rate_per_kwh: float = DEFAULT_EFFECTIVE_RATE) -> dict:
     """Convert annual energy-use labels into monthly usage and cost."""
     monthly_kwh = kwh_per_year / 12.0
     monthly_cost = monthly_kwh * rate_per_kwh
@@ -2542,11 +2549,16 @@ def kwh_year_to_monthly_cost(kwh_per_year: float, rate_per_kwh: float = DEFAULT_
 def calculator_tool(watts: float, hours_per_day: float) -> str:
     """Useful for calculating the running cost of an appliance.
     Input the appliance wattage (watts) and the hours used per day.
-    Returns the daily, monthly, and yearly cost in EC$."""
+    Returns the daily, monthly, and yearly cost in EC$, including the
+    fuel variation charge."""
 
     costs = appliance_cost(watts, hours_per_day)
+    # FIXED: Was hardcoding DEFAULT_RATE_PER_KWH here, so the reply text
+    # claimed a rate that excluded the fuel surcharge even once the math
+    # above was fixed to include it. Report the rate that was actually
+    # used, from the same dict the cost figures came from.
     return (f"Calculation successful: Running a {watts}W appliance for {hours_per_day} "
-            f"hours costs EC${costs['cost_month']} per month and EC${costs['cost_year']} per year at a rate of EC${DEFAULT_RATE_PER_KWH}/kWh.")
+            f"hours costs EC${costs['cost_month']} per month and EC${costs['cost_year']} per year at a rate of EC${costs['rate_per_kwh']}/kWh.")
 
 # =====================================================================
 # SECTION 9 · THE PIPELINE — Agentic Tool-Calling Graph

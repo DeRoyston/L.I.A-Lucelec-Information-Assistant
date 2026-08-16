@@ -216,6 +216,46 @@ try:
 except Exception as e:
     check("zero watts handled", False, f"{type(e).__name__}: {e}")
 
+# The fuel variation charge must be included by default — this is the
+# actual bug: the calculator was quoting customers a rate ~20% too low
+# by silently omitting DEFAULT_FUEL_SURCHARGE.
+effective = b.DEFAULT_RATE_PER_KWH + b.DEFAULT_FUEL_SURCHARGE
+c_default = b.appliance_cost(watts=1000, hours_per_day=1)
+check("appliance_cost default rate includes the fuel surcharge",
+      abs(c_default["rate_per_kwh"] - effective) < 0.001,
+      f"used rate {c_default['rate_per_kwh']}, expected {effective}")
+check("appliance_cost cost_day reflects the surcharge, not the bare base rate",
+      abs(c_default["cost_day"] - effective) < 0.01,
+      str(c_default["cost_day"]))
+
+cmp_default = b.compare_appliances(
+    {"name": "Old", "watts": 350, "hours_per_day": 8, "price": 1500},
+    {"name": "New", "watts": 150, "hours_per_day": 8, "price": 2600})
+check("compare_appliances default rate includes the fuel surcharge",
+      abs(cmp_default["Old"]["rate_per_kwh"] - effective) < 0.001,
+      f"used rate {cmp_default['Old']['rate_per_kwh']}, expected {effective}")
+
+# calculator_tool is the ONLY function actually bound to the LLM — this is
+# the transcript-level check that the fix reaches what the bot really says.
+tool_reply = b.calculator_tool.invoke({"watts": 1000, "hours_per_day": 1})
+check("calculator_tool reply does not quote the bare base rate as the charged rate",
+      f"EC${b.DEFAULT_RATE_PER_KWH}/kWh" not in tool_reply,
+      tool_reply)
+expected_month = round((1000 / 1000.0) * 1 * 30 * effective, 2)
+check("calculator_tool reply's monthly figure includes the fuel surcharge",
+      f"EC${expected_month}" in tool_reply,
+      tool_reply)
+
+# Regression guard: the two functions that already handled the surcharge
+# correctly must still produce the same numbers as before this change.
+payback = b.payback_with_surcharge(old_watts=1500, new_watts=900, hours_per_day=8, purchase_price=1500)
+check("payback_with_surcharge still uses base rate + its own fuel_surcharge param",
+      payback["monthly_saving"] > 0, str(payback))
+kwh_convert = b.kwh_year_to_monthly_cost(360)
+check("kwh_year_to_monthly_cost default rate unchanged (still base + surcharge)",
+      abs(kwh_convert["rate_per_kwh"] - effective) < 0.001,
+      str(kwh_convert["rate_per_kwh"]))
+
 
 # =====================================================================
 section("8 · Web harvest safety")
