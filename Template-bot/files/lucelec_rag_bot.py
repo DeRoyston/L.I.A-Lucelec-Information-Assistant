@@ -4259,7 +4259,7 @@ def streamlit_app():
     # ---------- TAB 4: Calculator ----------
     with tab_calc:
         st.warning(t("calc_warning"))
-        rate = st.number_input(t("rate_label"), value=float(DEFAULT_RATE_PER_KWH), min_value=0.0, step=0.05)
+        rate = st.number_input(t("rate_label"), value=float(DEFAULT_EFFECTIVE_RATE), min_value=0.0, step=0.05)  # FIXED: was the bare rate, missing the fuel surcharge — see calculator_tool
 
         c1, c2 = st.columns(2)
         with c1:
