@@ -395,7 +395,9 @@ def load_keys() -> dict:
             _ORIGINS[name] = None                    # note that this key is missing
 
     # LLM_PROVIDER is not a key, but it is a setting worth loading the same way.
-    for setting in ("LLM_PROVIDER", "ADMIN_USERNAME", "ADMIN_PASSWORD"): # FIXED: Added admin credentials           # a short list of extra settings
+    for setting in ("LLM_PROVIDER", "ADMIN_USERNAME", "ADMIN_PASSWORD",
+                     "SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD",
+                     "SMTP_FROM_EMAIL", "SMTP_USE_TLS"): # FIXED: SMTP settings were never loaded from .env — send_login_code() always saw an empty environment and fell back to the on-screen code, even with real SMTP credentials configured
         if not os.getenv(setting):                   # only if not already set
             value = from_secrets.get(setting) or from_env.get(setting)  # look in both files
             if value:                                # if we found something
@@ -3271,7 +3273,7 @@ def send_login_code(email: str, code: str) -> bool:
         port = int(os.getenv("SMTP_PORT", "587"))
         username = os.getenv("SMTP_USERNAME", "")
         password = os.getenv("SMTP_PASSWORD", "")
-        sender = os.getenv("SMTP_FROM") or username
+        sender = os.getenv("SMTP_FROM_EMAIL") or username
         use_tls = os.getenv("SMTP_USE_TLS", "true").strip().lower() != "false"
 
         msg = EmailMessage()

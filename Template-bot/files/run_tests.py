@@ -637,6 +637,20 @@ check("staff login flow compares the entered code with a constant-time check",
 check("staff login flow tracks the pending second step in session state",
       "pending_login" in app_source)
 
+# Regression guard: SMTP_* was scaffolded in .env.example but load_keys()'s
+# whitelist never actually loaded it from .env into os.environ, so real
+# SMTP credentials silently never worked — always fell back to the
+# on-screen code. And the sender address must match .env's real key name
+# (SMTP_FROM_EMAIL), not a name that only exists in a comment.
+load_keys_source = inspect.getsource(b.load_keys)
+check("load_keys() loads SMTP settings from .env into the environment",
+      all(name in load_keys_source for name in
+          ("SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD",
+           "SMTP_FROM_EMAIL", "SMTP_USE_TLS")),
+      load_keys_source)
+check("send_login_code reads the sender address from SMTP_FROM_EMAIL",
+      "SMTP_FROM_EMAIL" in inspect.getsource(b.send_login_code))
+
 
 # =====================================================================
 section("RESULTS")
