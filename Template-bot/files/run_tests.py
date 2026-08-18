@@ -598,6 +598,47 @@ check("offline answer to 'create an account' cites the new-connections document"
 
 
 # =====================================================================
+section("15 · Staff login 2-step verification")
+# =====================================================================
+
+code_a = b.generate_login_code()
+check("generate_login_code returns a 6-digit numeric string",
+      len(code_a) == 6 and code_a.isdigit(), code_a)
+codes = {b.generate_login_code() for _ in range(20)}
+check("generate_login_code produces different codes across calls",
+      len(codes) > 1, codes)
+
+fresh_issue = b.time.time()
+check("is_login_code_expired is False for a code issued just now",
+      b.is_login_code_expired(fresh_issue) is False)
+stale_issue = b.time.time() - b.LOGIN_CODE_TTL_SECONDS - 1
+check("is_login_code_expired is True once the TTL has passed",
+      b.is_login_code_expired(stale_issue) is True)
+
+# No SMTP host configured in this test environment — must fail closed
+# (return False) rather than raise, so the caller can fall back to
+# showing the code on-screen.
+saved_smtp_host = os.environ.pop("SMTP_HOST", None)
+try:
+    with quiet():
+        sent = b.send_login_code("someone@example.com", "123456")
+    check("send_login_code returns False with no SMTP host configured",
+          sent is False, sent)
+finally:
+    if saved_smtp_host is not None:
+        os.environ["SMTP_HOST"] = saved_smtp_host
+
+check("staff login flow generates a code after the password check",
+      "generate_login_code()" in app_source)
+check("staff login flow tries to email the code via send_login_code",
+      "send_login_code(" in app_source)
+check("staff login flow compares the entered code with a constant-time check",
+      "hmac.compare_digest(code_input" in app_source)
+check("staff login flow tracks the pending second step in session state",
+      "pending_login" in app_source)
+
+
+# =====================================================================
 section("RESULTS")
 # =====================================================================
 total = len(PASSES) + len(FAILS)
