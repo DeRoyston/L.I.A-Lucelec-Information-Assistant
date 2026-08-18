@@ -115,7 +115,19 @@ def build_accessibility_css(font_size: int) -> str:
 
 
 DARK_MODE_CSS = """
-:root { color-scheme: dark; }
+:root {
+    color-scheme: dark;
+}
+/* st.table (the Eval tab's results, and the Cost Calculator's Compare
+   results) renders a real static HTML <table>, but Streamlit's own base
+   styles give it a light background/border independent of the page
+   theme — same class of miss as the expander summary and code spans
+   above, just a different element. */
+[data-testid="stTable"] table, [data-testid="stTable"] th, [data-testid="stTable"] td {
+    background-color: #1e222b !important;
+    color: #fafafa !important;
+    border-color: #3a3f4b !important;
+}
 html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
 [data-testid="stSidebar"], [data-testid="stMain"], [data-testid="stMainBlockContainer"] {
     background-color: #0e1117 !important;
@@ -136,6 +148,14 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
    text), rendering as a blank white bar with invisible label text. Hits
    every expander in the app: Settings, "Sources used", RAG Search Test. */
 [data-testid="stExpander"] summary {
+    background-color: #1e222b !important;
+    color: #fafafa !important;
+}
+/* Same class of bug as the expander summary above, different element:
+   inline markdown code spans (`` `like this` ``) — the staff-account
+   username badge, API key names — keep Streamlit's light default (near-
+   white bg, near-white text), rendering as a blank white pill. */
+code {
     background-color: #1e222b !important;
     color: #fafafa !important;
 }
@@ -4356,7 +4376,11 @@ def streamlit_app():
             st.subheader("Evaluations")
             if st.button("Run eval set"):
                 rows = run_eval(index, user)
-                st.dataframe(rows, use_container_width=True)
+                # st.table, not st.dataframe: a static one-shot report needs
+                # no interactive sorting/scrolling, and st.dataframe renders
+                # through a canvas that CSS injection can't reach — it always
+                # stays light regardless of the dark-mode toggle.
+                st.table(rows)
                 passed = sum(1 for r in rows if r["passed"])
                 st.metric("Passed", f"{passed}/{len(rows)}")
 
