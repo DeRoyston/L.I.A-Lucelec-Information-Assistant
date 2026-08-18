@@ -611,6 +611,48 @@ check("offline answer to 'create an account' cites the new-connections document"
 
 
 # =====================================================================
+section("15 · Expanded personas, empathy maps, and wardrobe registers")
+# =====================================================================
+
+# PERSONA stays the primary teaching example (Blueprint tab, docs) — this
+# fix only adds alongside it, never replaces its required fields.
+check("PERSONA keeps its original required fields",
+      {"name", "who", "goal", "need", "challenge", "quote"} <= set(b.PERSONA.keys()),
+      list(b.PERSONA.keys()))
+
+# PERSONAS is the secondary-archetype list; each entry must be shaped like
+# PERSONA (same required fields) plus a "register" naming a real TONES key,
+# so the Blueprint tab can render every archetype without a KeyError.
+check("PERSONAS is a non-empty list", len(b.PERSONAS) > 0, len(b.PERSONAS))
+for i, p in enumerate(b.PERSONAS):
+    check(f"PERSONAS[{i}] has the required persona fields",
+          {"name", "who", "goal", "need", "challenge", "quote", "register"} <= set(p.keys()),
+          list(p.keys()))
+    check(f"PERSONAS[{i}]['register'] names a real TONES voice",
+          p["register"] in b.TONES, p["register"])
+
+# EMPATHY_MAPS pairs one-to-one (by index) with PERSONAS.
+check("EMPATHY_MAPS has one entry per PERSONAS entry",
+      len(b.EMPATHY_MAPS) == len(b.PERSONAS),
+      (len(b.EMPATHY_MAPS), len(b.PERSONAS)))
+for i, e in enumerate(b.EMPATHY_MAPS):
+    check(f"EMPATHY_MAPS[{i}] has the four empathy-map fields",
+          set(e.keys()) == {"says", "thinks", "does", "feels"}, list(e.keys()))
+
+# The wardrobe grew three new registers; dress() must still route every
+# TONES key through its own voice, including the new ones, and unknown
+# registers must still fall back to DEFAULT_REGISTER rather than raising.
+for new_register in ("frustrated", "confused", "rushed"):
+    check(f"TONES gained a '{new_register}' voice",
+          new_register in b.TONES, list(b.TONES.keys()))
+    check(f"dress('{new_register}', ...) wraps the text, doesn't just echo it",
+          b.dress(new_register, "test") != "test", b.dress(new_register, "test"))
+check("dress() still falls back to DEFAULT_REGISTER for an unknown mood",
+      b.dress("not-a-real-register", "test") == b.dress(b.DEFAULT_REGISTER, "test"),
+      b.dress("not-a-real-register", "test"))
+
+
+# =====================================================================
 section("RESULTS")
 # =====================================================================
 total = len(PASSES) + len(FAILS)

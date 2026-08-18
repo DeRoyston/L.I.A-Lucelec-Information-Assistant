@@ -234,6 +234,37 @@ code {
 .stTabs [data-baseweb="tab"]:not([aria-selected="true"]) { border-color: #3a3f4b !important; }
 [data-testid="stChatInput"] { border-color: #3a3f4b !important; }
 [data-testid="stSidebar"] button { border-color: #3a3f4b !important; }
+/* st.error/warning/success/info render their message through st.markdown
+   internally, so the broad stMarkdownContainer rule above already forces
+   the TEXT to #fafafa — but stAlert's own background/border kept
+   Streamlit's light pastel default, turning "blank white box" into the
+   worse "white text on near-white box" once the text rule applied. */
+[data-testid="stAlert"] {
+    background-color: #1e222b !important;
+    border-color: #3a3f4b !important;
+}
+/* Same story for the file-uploader dropzone ("Drag and drop..." panel). */
+[data-testid="stFileUploaderDropzone"] {
+    background-color: #1e222b !important;
+    border-color: #3a3f4b !important;
+}
+/* st.container(border=True) wrapper (Harvest approval panels). */
+[data-testid="stVerticalBlockBorderWrapper"] { border-color: #3a3f4b !important; }
+/* The OPEN dropdown list for st.selectbox/st.multiselect and the panel for
+   st.popover ("+" upload button) are BaseWeb portals rendered outside
+   stApp's own DOM tree, so none of the data-testid rules above ever reach
+   them — they kept Streamlit's light default: a white options list with
+   near-invisible text on hover. */
+[data-baseweb="popover"] { background-color: #1e222b !important; }
+[data-baseweb="menu"], [role="listbox"] {
+    background-color: #1e222b !important;
+    color: #fafafa !important;
+}
+[role="option"] { color: #fafafa !important; }
+[role="option"]:hover, [role="option"][aria-selected="true"] {
+    background-color: #2a2f3a !important;
+}
+[data-testid="stPopoverBody"] { background-color: #1e222b !important; }
 """
 
 POLISH_CSS = """
@@ -536,15 +567,61 @@ KEY_SOURCES = load_keys()                            # do it now, once, at impor
 # 2.1 · USER PERSONA (Day 1) — who you are actually building for
 # ---------------------------------------------------------------------
 #   One person, not "customers". If you cannot picture them standing in
-#   front of you, the persona is not finished.
+#   front of you, the persona is not finished. PERSONA is the primary
+#   teaching example (design docs, Blueprint tab); PERSONAS below adds a
+#   few more archetypes so the Blueprint tab shows the range of real
+#   users this bot serves, not just one. None of these are read by the
+#   live prompt builders — see build_prompt()/build_social_prompt() for
+#   why (persona_who is session-scoped, sourced from the sidebar).
 PERSONA = {                                          # a dictionary describing one real user
-    "name":      "Mrs. Augustin",                    # give them a name, e.g. "Ms. Felicien"
-    "who":       "a homeowner in Castries, 45, managing a tight household budget", # e.g. "a shopkeeper in Vieux Fort, 54"
-    "goal":      "to find out if her older appliances are causing her electricity bill to spike", # what they came to the bot to achieve
-    "need":      "a clear, simple breakdown of what specific appliances cost to run per month in EC$", # what they must learn to achieve it
-    "challenge": "the technical jargon like 'kWh' and fuel surcharges make it hard to estimate real costs", # what stops them today
-    "quote":     "I just want to know if buying a new inverter fridge will actually save me money.", # in their own words, from the interview
+    "name":            "Mrs. Augustin",              # give them a name, e.g. "Ms. Felicien"
+    "who":             "a homeowner in Castries, 45, managing a tight household budget", # e.g. "a shopkeeper in Vieux Fort, 54"
+    "goal":            "to find out if her older appliances are causing her electricity bill to spike", # what they came to the bot to achieve
+    "need":            "a clear, simple breakdown of what specific appliances cost to run per month in EC$", # what they must learn to achieve it
+    "challenge":       "the technical jargon like 'kWh' and fuel surcharges make it hard to estimate real costs", # what stops them today
+    "quote":           "I just want to know if buying a new inverter fridge will actually save me money.", # in their own words, from the interview
+    "device_literacy": "low — comfortable with a phone, not with utility jargon", # how much technical vocabulary they already carry in
+    "urgency":         "moderate — worried, but the bill isn't overdue yet", # how much slack they have before this becomes a crisis
 }                                                    # persona ends here
+
+# Secondary archetypes. Same shape as PERSONA, plus a suggested "register"
+# key naming which TONES voice (2.3) fits the person, so a persona and its
+# empathy map stay paired with the tone that should carry it.
+PERSONAS = [
+    {
+        "name":            "Mr. Charles",
+        "who":             "a shopkeeper in Vieux Fort, 54, running a small hardware store",
+        "goal":            "to work out if switching the shop's fridges to inverter models pays for itself before the next tariff review",
+        "need":            "a cost comparison in EC$ per month, not a lecture on watts",
+        "challenge":       "no time between customers to dig through PDFs — needs the answer in one read",
+        "quote":           "Just tell me the number, I've got customers waiting.",
+        "device_literacy": "medium — runs the shop's POS system daily, impatient with anything slower",
+        "urgency":         "high — decision needed before he places this month's stock order",
+        "register":        "formal",
+    },
+    {
+        "name":            "Ms. Joseph",
+        "who":             "a pensioner in Soufriere, 71, living alone on a fixed monthly income",
+        "goal":            "to understand why last month's bill jumped without anything in the house changing",
+        "need":            "reassurance first, then a plain-language explanation — not a wall of tariff terms",
+        "challenge":       "reads slowly on a small phone screen and gets discouraged by long technical replies",
+        "quote":           "I haven't changed anything, so why is it so much this time?",
+        "device_literacy": "very low — first time using a chat-based service of any kind",
+        "urgency":         "high — a fixed income means any unexpected increase is a real problem, not an inconvenience",
+        "register":        "anxious",
+    },
+    {
+        "name":            "Mr. Baptiste",
+        "who":             "settling a late relative's account, 39, handling the estate",
+        "goal":            "to find out what happens to the account and what LUCELEC needs from him",
+        "need":            "clear next steps, delivered gently — this is an emotionally loaded task on top of an admin one",
+        "challenge":       "doesn't know the account holder's login details or account number offhand",
+        "quote":           "I'm trying to sort out my mother's account. I'm not sure what I even need.",
+        "device_literacy": "medium",
+        "urgency":         "moderate — no deadline pressure, but wants this handled and behind him",
+        "register":        "bereaved",
+    },
+]                                                    # PERSONAS ends here
 
 
 # ---------------------------------------------------------------------
@@ -552,13 +629,35 @@ PERSONA = {                                          # a dictionary describing o
 # ---------------------------------------------------------------------
 #   This is not decoration. The "feels" line is what picks the register
 #   in section 2.3, so a wrong empathy map produces a bot with the wrong
-#   voice at the worst possible moment.
+#   voice at the worst possible moment. EMPATHY_MAP pairs with PERSONA;
+#   EMPATHY_MAPS below pairs one-to-one (by list index) with PERSONAS.
 EMPATHY_MAP = {                                      # four sides of one moment
     "says":   "My bill is too high this month. How much does an AC cost to run?", # their actual words to the bot
     "thinks": "I hope I don't have to stop using the AC at night. I really can't afford another high bill.", # what they do not say
     "does":   "Checks the LUCELEC website, gets confused by the tariff sheets, and turns to the chatbot for a quick answer.", # the action they take
     "feels":  "anxious",                             # anxious? rushed? embarrassed? grieving?
 }                                                    # empathy map ends here
+
+EMPATHY_MAPS = [
+    {
+        "says":   "Does the inverter fridge actually pay for itself, or is that just marketing?",
+        "thinks": "I don't want to spend money I don't have to find out I got it wrong.",
+        "does":   "Pulls up the shop's last few bills on his phone between customers and fires off one quick question.",
+        "feels":  "impatient",
+    },
+    {
+        "says":   "Why is my bill so much higher this month? I haven't changed anything.",
+        "thinks": "Did I do something wrong? Can I even afford to fix this?",
+        "does":   "Re-reads the paper bill twice, then asks a neighbour before finally trying the chatbot.",
+        "feels":  "anxious",
+    },
+    {
+        "says":   "I'm trying to sort out my mother's account and I don't know where to start.",
+        "thinks": "I don't want to get this wrong on top of everything else right now.",
+        "does":   "Searches the LUCELEC site for a bereavement or account-transfer page, finds nothing, opens the chat as a last resort.",
+        "feels":  "grieving",
+    },
+]                                                    # EMPATHY_MAPS ends here
 
 
 # ---------------------------------------------------------------------
@@ -575,6 +674,9 @@ TONES = {                                            # dictionary: mood -> a fun
     "formal":     lambda t: f"Dear customer — {t}",   # for businesses and written records
     "anxious":    lambda t: f"Don't worry, we can figure this out together. {t}",# for the worried homeowner
     "bereaved":   lambda t: f"I'm very sorry for your loss. {t}",   # for an account after a death
+    "frustrated": lambda t: f"I hear you, and I want to get this sorted quickly. {t}", # for someone already at their limit
+    "confused":   lambda t: f"No problem — let's take this one step at a time. {t}", # for someone lost in jargon, not upset yet
+    "rushed":     lambda t: f"Quick answer: {t}",     # for someone who explicitly wants brevity, no preamble
 }                                                    # wardrobe ends here
 
 DEFAULT_REGISTER = "warm"                            # used when we cannot tell the mood
@@ -4364,13 +4466,30 @@ def streamlit_app():
     # (handle_combined_file_uploads()) — the standalone Excel tab is retired.
     if is_admin:
         with tab_blueprint:
-            b1, b2 = st.columns(2)                       
-            with b1:                                     
-                st.subheader("Primary persona")          
-                for k, v in PERSONA.items(): st.write(f"**{k}** — {v}")           
-            with b2:                                     
-                st.subheader("Empathy map")              
+            b1, b2 = st.columns(2)
+            with b1:
+                st.subheader("Primary persona")
+                for k, v in PERSONA.items(): st.write(f"**{k}** — {v}")
+            with b2:
+                st.subheader("Empathy map")
                 for k, v in EMPATHY_MAP.items(): st.write(f"**{k}** — {v}")
+
+            st.divider()
+            st.subheader("Other archetypes this bot serves")
+            for persona, empathy in zip(PERSONAS, EMPATHY_MAPS):
+                with st.expander(f"{persona['name']} — {persona['who']}"):
+                    p1, p2 = st.columns(2)
+                    with p1:
+                        st.caption("Persona")
+                        for k, v in persona.items(): st.write(f"**{k}** — {v}")
+                    with p2:
+                        st.caption("Empathy map")
+                        for k, v in empathy.items(): st.write(f"**{k}** — {v}")
+
+            st.divider()
+            st.subheader("The wardrobe — registers available")
+            st.caption("Every voice TONES/dress() can put on a reply.")
+            for name in TONES: st.write(f"**{name}** — {dress(name, '(sample reply text)')}")
 
         with tab_web:                                    
             st.subheader("Harvest a page") 
