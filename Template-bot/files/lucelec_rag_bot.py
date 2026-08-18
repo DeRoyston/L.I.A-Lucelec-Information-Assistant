@@ -2558,18 +2558,67 @@ HARD RULES, no exceptions:
 
 
 # Used when no AI provider is configured, so the bot is still pleasant offline.
-SOCIAL_FALLBACKS = {                                 # intent -> a sensible fixed reply
-    "greeting":   "Hello! I can help you work out what an appliance costs to run, "
-                  "or explain something on your bill. What would you like to know?",
-    "thanks":     "You're very welcome. Anything else you'd like to work out?",
-    "farewell":   "Take care. Come back any time you need to check a running cost.",
-    "howareyou":  "I'm well, thank you for asking. What can I help you with today?",
-    "identity":   "I'm {bot_name}, a computer assistant built for {client} — "
-                  "not a person. I can help you compare what appliances cost to run.",
-    "capability": "I can work out what an appliance costs to run per month or per "
-                  "year, compare two appliances before you buy, and explain the "
-                  "words on your bill in plain language.",
-    "chitchat":   "Understood. Is there an appliance or a bill question I can help with?",
+# FIXED: social_reply()'s own docstring promises "Answer small talk in the
+# user's chosen language" — true for the live-LLM path (build_social_prompt()
+# passes `language` into SOCIAL_PROMPT), but these offline fallback strings
+# were English-only regardless, so a customer with no LLM key configured (or
+# every provider call failing) always got an English reply no matter which
+# UI language they'd picked. Keyed by the same language names UI_LANGUAGES
+# uses, so `SOCIAL_FALLBACKS.get(language, SOCIAL_FALLBACKS["English"])`
+# mirrors t()'s own fallback-to-English pattern.
+SOCIAL_FALLBACKS = {                                 # language -> intent -> a sensible fixed reply
+    "English": {
+        "greeting":   "Hello! I can help you work out what an appliance costs to run, "
+                      "or explain something on your bill. What would you like to know?",
+        "thanks":     "You're very welcome. Anything else you'd like to work out?",
+        "farewell":   "Take care. Come back any time you need to check a running cost.",
+        "howareyou":  "I'm well, thank you for asking. What can I help you with today?",
+        "identity":   "I'm {bot_name}, a computer assistant built for {client} — "
+                      "not a person. I can help you compare what appliances cost to run.",
+        "capability": "I can work out what an appliance costs to run per month or per "
+                      "year, compare two appliances before you buy, and explain the "
+                      "words on your bill in plain language.",
+        "chitchat":   "Understood. Is there an appliance or a bill question I can help with?",
+    },
+    "Spanish": {
+        "greeting":   "¡Hola! Puedo ayudarle a calcular cuánto cuesta usar un electrodoméstico, "
+                      "o explicarle algo de su factura. ¿Qué le gustaría saber?",
+        "thanks":     "Con mucho gusto. ¿Hay algo más que le gustaría calcular?",
+        "farewell":   "Cuídese. Vuelva cuando necesite calcular un costo de consumo.",
+        "howareyou":  "Estoy bien, gracias por preguntar. ¿En qué puedo ayudarle hoy?",
+        "identity":   "Soy {bot_name}, un asistente informático creado para {client} — "
+                      "no soy una persona. Puedo ayudarle a comparar el costo de sus electrodomésticos.",
+        "capability": "Puedo calcular cuánto cuesta usar un electrodoméstico al mes o al año, "
+                      "comparar dos electrodomésticos antes de comprar, y explicarle "
+                      "los términos de su factura en lenguaje sencillo.",
+        "chitchat":   "Entendido. ¿Hay alguna pregunta sobre un electrodoméstico o su factura en la que pueda ayudarle?",
+    },
+    "French": {
+        "greeting":   "Bonjour ! Je peux vous aider à calculer le coût d'utilisation d'un appareil, "
+                      "ou vous expliquer un point de votre facture. Que souhaitez-vous savoir ?",
+        "thanks":     "Avec plaisir. Y a-t-il autre chose que vous aimeriez calculer ?",
+        "farewell":   "Prenez soin de vous. Revenez quand vous voulez vérifier un coût de fonctionnement.",
+        "howareyou":  "Je vais bien, merci de demander. Comment puis-je vous aider aujourd'hui ?",
+        "identity":   "Je suis {bot_name}, un assistant informatique conçu pour {client} — "
+                      "pas une personne. Je peux vous aider à comparer le coût de vos appareils.",
+        "capability": "Je peux calculer le coût d'utilisation d'un appareil par mois ou par "
+                      "an, comparer deux appareils avant l'achat, et expliquer "
+                      "les termes de votre facture en langage simple.",
+        "chitchat":   "Compris. Avez-vous une question sur un appareil ou une facture à laquelle je peux répondre ?",
+    },
+    "French Creole (Kwéyòl)": {
+        "greeting":   "Bonjou! Mwen ka édé'w kalkilé konbyen sa kouté pou fè maché yon aparèy, "
+                      "oswa eksplike'w yon bagay asou bòdwo'w. Ki sa'w vlé konnèt?",
+        "thanks":     "Padkwa. Ni lòt biten ou vlé kalkilé?",
+        "farewell":   "Pran swen'w. Vini tounen chak fwa ou bizwen chèké yon pri fonksyònman.",
+        "howareyou":  "Mwen byen, mèsi pou'w mandé. Ki sa mwen kapab édé'w épi jodi-a?",
+        "identity":   "Mwen sé {bot_name}, an asistan òdinatè ki fèt pou {client} — "
+                      "mwen pa an moun. Mwen ka édé'w konparé pri aparèy.",
+        "capability": "Mwen ka kalkilé konbyen sa kouté pou fè maché yon aparèy chak mwa oswa chak "
+                      "lanné, konparé dé aparèy avan ou achté, é eksplike'w "
+                      "mo asou bòdwo'w an lang senp.",
+        "chitchat":   "Mwen konprann. Ess ni an kesyon asou an aparèy oswa an bòdwo mwen kapab édé'w épi?",
+    },
 }
 
 
@@ -2609,7 +2658,8 @@ def social_reply(message: str, register: str, language: str = "English",
 
     system = build_social_prompt(persona_name, persona_who, language)
 
-    fallback = SOCIAL_FALLBACKS.get(kind, SOCIAL_FALLBACKS["chitchat"])
+    fallbacks_for_language = SOCIAL_FALLBACKS.get(language, SOCIAL_FALLBACKS["English"])
+    fallback = fallbacks_for_language.get(kind, fallbacks_for_language["chitchat"])
     fallback = fallback.format(bot_name=BOT_NAME, client=CLIENT)
 
     from langchain_core.messages import SystemMessage, HumanMessage

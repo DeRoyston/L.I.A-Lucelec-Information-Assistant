@@ -717,6 +717,43 @@ check("dress() still falls back to DEFAULT_REGISTER for an unknown mood",
 
 
 # =====================================================================
+section("17 · Offline social-lane replies are localized, not English-only")
+# =====================================================================
+# social_reply()'s own docstring promises "Answer small talk in the
+# user's chosen language" — true for the live-LLM path, but the offline
+# SOCIAL_FALLBACKS dict used to be a flat, English-only lookup regardless
+# of `language`, so a customer with no LLM key configured (this dev env
+# has none — every check below genuinely exercises the offline path,
+# same as every other social_reply()/answer() call in this suite) always
+# got an English reply no matter which UI language was selected.
+check("SOCIAL_FALLBACKS is keyed by language, not just by intent",
+      set(b.SOCIAL_FALLBACKS.keys()) >= {"English", "Spanish", "French", "French Creole (Kwéyòl)"},
+      list(b.SOCIAL_FALLBACKS.keys()))
+for lang in ("Spanish", "French", "French Creole (Kwéyòl)"):
+    check(f"SOCIAL_FALLBACKS['{lang}'] covers every intent English does",
+          set(b.SOCIAL_FALLBACKS[lang].keys()) == set(b.SOCIAL_FALLBACKS["English"].keys()),
+          (set(b.SOCIAL_FALLBACKS["English"].keys()) - set(b.SOCIAL_FALLBACKS[lang].keys())))
+
+with quiet():
+    kweyol_greeting = b.social_reply("hello", b.DEFAULT_REGISTER, language="French Creole (Kwéyòl)")
+check("a Kwéyòl-language greeting gets the Kwéyòl offline fallback, not the English one",
+      "Bonjou" in kweyol_greeting["reply"] and "Hello!" not in kweyol_greeting["reply"],
+      kweyol_greeting["reply"][:120])
+
+with quiet():
+    english_greeting = b.social_reply("hello", b.DEFAULT_REGISTER, language="English")
+check("English still gets the original English offline fallback (no regression)",
+      "Hello!" in english_greeting["reply"],
+      english_greeting["reply"][:120])
+
+with quiet():
+    unknown_lang_reply = b.social_reply("hello", b.DEFAULT_REGISTER, language="Klingon")
+check("an unrecognized language falls back to English, doesn't crash",
+      "Hello!" in unknown_lang_reply["reply"],
+      unknown_lang_reply["reply"][:120])
+
+
+# =====================================================================
 section("RESULTS")
 # =====================================================================
 total = len(PASSES) + len(FAILS)
