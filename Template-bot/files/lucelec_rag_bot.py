@@ -275,7 +275,18 @@ code {
     background-color: #1e222b !important;
     color: #fafafa !important;
 }
-[role="option"] { color: #fafafa !important; }
+/* Each row gets its OWN opaque background rather than relying on the
+   listbox's background showing through a transparent row — react-aria
+   repositions rows via CSS transform on hover/keyboard-nav, and Chrome's
+   compositor doesn't always repaint the sibling rows left behind, so a
+   row can end up rendering the previous frame's (light-mode) paint under
+   real GPU compositing even though this rule was already !important and
+   already matching — invisible in headless (software-rendered) testing,
+   visible as ghosted/transparent rows under real hardware acceleration. */
+[role="option"] {
+    background-color: #1e222b !important;
+    color: #fafafa !important;
+}
 [role="option"]:hover, [role="option"][aria-selected="true"] {
     background-color: #2a2f3a !important;
 }
@@ -792,6 +803,21 @@ LOCATION_CONTEXT = {                                 # dictionary: segment -> it
         "desk":  "LUCELEC Key Accounts",
         "rate":  "[Confirm with client]",
         "notes": "Demand charges may apply. Always escalate pricing questions.",
+    },
+    "Hotel / Tourism": {                              # hotels, guesthouses, resorts
+        "desk":  "LUCELEC Commercial Desk",
+        "rate":  "[Confirm with client]",
+        "notes": "Often billed on a commercial-class rate. Confirm the exact tariff class with the client — some large resorts may sit on a separate agreement.",
+    },
+    "Government / Public Sector": {                   # government buildings, public institutions
+        "desk":  "LUCELEC Key Accounts",
+        "rate":  "[Confirm with client]",
+        "notes": "May be billed under a separate government-account arrangement. Always escalate — do not assume standard Commercial/Industrial rules apply.",
+    },
+    "Agricultural": {                                 # farms, agro-processing
+        "desk":  "LUCELEC Customer Service",
+        "rate":  "[Confirm with client]",
+        "notes": "Confirm whether a dedicated agricultural rate exists before quoting anything — not yet verified with the client.",
     },
     # TODO_students: add the segments YOUR client named in the Day 3 interview.
 }                                                    # rulebook ends here
@@ -3204,7 +3230,12 @@ def initialize_sidebar_state(state: Optional[dict] = None) -> dict:
     """
     if state is None:
         state = {}
-    state.setdefault("page_state", "customer_view")
+    # FIXED (2026-08-18): a fresh session must open on the customer gate,
+    # not straight into chat — see the "4. VIEW ROUTER" section for the
+    # gate itself. This setdefault ran BEFORE that router's own guard, so
+    # it silently won the race and the router's check for "not yet set"
+    # never actually fired.
+    state.setdefault("page_state", "customer_gate")
     state.setdefault("staff_account", None)
     state.setdefault("ui_language", "English")
     state.setdefault("dark_mode", False)
@@ -3560,6 +3591,9 @@ def streamlit_app():
             "register_default_opt": "(read it from the message)",
             "territory_label": "Territory — which customer category?",
             "territory_default_opt": "(unknown)", "red_line_header": "The Red Line",
+            "gate_title": "Before we begin", "gate_continue_btn": "Continue",
+            "gate_territory_required_warning": "Please choose which customer category best describes you before continuing.",
+            "staff_login_link": "LUCELEC staff? Log in here",
             "start_over_btn": "Start over", "sources_used": "Sources used",
             "retrieving_spinner": "Retrieving…", "generating_audio_spinner": "Generating audio...",
             "kweyol_elevenlabs_caption": "ElevenLabs doesn't support Kwéyòl — using Google TTS for this reply instead.",
@@ -3602,6 +3636,9 @@ def streamlit_app():
             "register_default_opt": "(leerlo del mensaje)",
             "territory_label": "Territorio — ¿qué categoría de cliente?",
             "territory_default_opt": "(desconocido)", "red_line_header": "La línea roja",
+            "gate_title": "Antes de empezar", "gate_continue_btn": "Continuar",
+            "gate_territory_required_warning": "Por favor elija la categoría de cliente que mejor le describe antes de continuar.",
+            "staff_login_link": "¿Personal de LUCELEC? Inicie sesión aquí",
             "start_over_btn": "Empezar de nuevo", "sources_used": "Fuentes utilizadas",
             "retrieving_spinner": "Buscando…", "generating_audio_spinner": "Generando audio...",
             "kweyol_elevenlabs_caption": "ElevenLabs no admite Kwéyòl — usando Google TTS para esta respuesta.",
@@ -3645,6 +3682,9 @@ def streamlit_app():
             "register_default_opt": "(le déduire du message)",
             "territory_label": "Territoire — quelle catégorie de client ?",
             "territory_default_opt": "(inconnu)", "red_line_header": "La ligne rouge",
+            "gate_title": "Avant de commencer", "gate_continue_btn": "Continuer",
+            "gate_territory_required_warning": "Veuillez choisir la catégorie de client qui vous correspond le mieux avant de continuer.",
+            "staff_login_link": "Personnel de LUCELEC ? Connectez-vous ici",
             "start_over_btn": "Recommencer", "sources_used": "Sources utilisées",
             "retrieving_spinner": "Recherche…", "generating_audio_spinner": "Génération de l'audio...",
             "kweyol_elevenlabs_caption": "ElevenLabs ne prend pas en charge le Kwéyòl — utilisation de Google TTS pour cette réponse.",
@@ -3687,6 +3727,9 @@ def streamlit_app():
             "register_default_opt": "(li sa nan mesaj la)",
             "territory_label": "Teritwa — ki kategori kliyan?",
             "territory_default_opt": "(pa konnèt)", "red_line_header": "Liy Wouj la",
+            "gate_title": "Avan nou kòmanse", "gate_continue_btn": "Kontinye",
+            "gate_territory_required_warning": "Tanpri chwazi kategori kliyan ki dekri ou byen anvan ou kontinye.",
+            "staff_login_link": "Ou se anplwaye LUCELEC? Konekte isit la",
             "start_over_btn": "Rekòmanse", "sources_used": "Sous yo itilize",
             "retrieving_spinner": "K ap chèché…", "generating_audio_spinner": "K ap fè odyo...",
             "kweyol_elevenlabs_caption": "ElevenLabs pa sipòte Kwéyòl — n ap sèvi Google TTS pou repons sa a.",
@@ -3788,13 +3831,138 @@ def streamlit_app():
 
     # 4. VIEW ROUTER
     initialize_sidebar_state(st.session_state)
-    if st.session_state.page_state != 'customer_view' and st.session_state.page_state != 'admin_view' and st.session_state.page_state != 'admin_login':
-        st.session_state.page_state = 'customer_view'
+    # FIXED: 'customer_gate' added as a 4th valid state and made the
+    # fallback default (was 'customer_view') — see the customer-gate block
+    # below for why: real customers used to reach the chat with an assumed
+    # identity (Domestic, verified) before ever being asked anything.
+    _valid_states = ('customer_view', 'admin_view', 'admin_login', 'customer_gate')
+    if st.session_state.page_state not in _valid_states:
+        st.session_state.page_state = 'customer_gate'
 
-    def set_state(new_state): 
-        st.session_state.page_state = new_state 
+    def set_state(new_state):
+        st.session_state.page_state = new_state
 
-    # 5. STAFF LOGIN PORTAL
+    # FIXED (2026-08-18): a Streamlit key-bound widget's session_state
+    # entry is DELETED at the end of any script run that doesn't render
+    # that widget — not preserved indefinitely like a plain dict entry.
+    # The gate screen and Settings are mutually exclusive render sites
+    # (and Settings itself only renders when opened), so every one of
+    # these fields was getting silently wiped back to its default the
+    # first time either site went a run without rendering it — caught
+    # live: Territory reset to "(unknown)" the moment Settings was
+    # opened after completing the gate with "Domestic" selected. Each
+    # sticky_* helper shadows the widget's live value into a SEPARATE,
+    # plain session_state key that Streamlit never touches, and reseeds
+    # the widget's displayed value from that shadow on every render —
+    # the widget key itself (`f"{session_key}__widget"`) is treated as
+    # disposable. This is the same root cause, independently, behind the
+    # pre-existing "ui_language" picker (see below) resetting to English
+    # every time Settings was closed and reopened — not new with the
+    # gate, just far more visible now that identical logic runs every
+    # single gate completion instead of only on a Settings toggle.
+    def sticky_text_input(label: str, placeholder: str, session_key: str) -> str:
+        current = st.session_state.get(session_key, "")
+        value = st.text_input(label, value=current, placeholder=placeholder,
+                               key=f"{session_key}__widget")
+        st.session_state[session_key] = value
+        return value
+
+    def sticky_checkbox(label: str, session_key: str, default: bool = True) -> bool:
+        current = st.session_state.get(session_key, default)
+        value = st.checkbox(label, value=current, key=f"{session_key}__widget")
+        st.session_state[session_key] = value
+        return value
+
+    def sticky_selectbox(label: str, options: list, session_key: str) -> str:
+        current = st.session_state.get(session_key)
+        index = options.index(current) if current in options else 0
+        value = st.selectbox(label, options, index=index, key=f"{session_key}__widget")
+        st.session_state[session_key] = value
+        return value
+
+    def render_language_picker(t):
+        """The language picker itself is the same "widget key gets GC'd
+        the moment a run doesn't render it" bug as identity_* above — this
+        one predates the gate (Settings-only), it just needed the gate's
+        second call site to become reliably visible. `ui_language` stays
+        the plain, never-GC'd key every t() call and the init-time
+        setdefault() already rely on; only the widget's OWN key changes."""
+        sticky_selectbox(t("language_label"), list(UI_LANGUAGES.keys()), "ui_language")
+
+    def render_identity_fields(t, show_authority: bool = True):
+        """The shared "who is in front of you" widgets — Customer Name,
+        [Authority], Register, Territory. Called from BOTH the customer
+        gate screen and the Settings panel — see the sticky_* helpers
+        above for how the values actually survive that gap.
+
+        show_authority=False on the gate screen — a real customer
+        shouldn't self-attest their own identity verification; that
+        checkbox is a staff/testing toggle and stays Settings-only,
+        defaulting to True via current_user_from_identity()'s fallback.
+        """
+        c_name = sticky_text_input(
+            t("customer_name_label"), t("customer_name_placeholder"),
+            "identity_customer_name",
+        )
+        # FIXED (2026-08-15): session-scoped, never a fabricated identity
+        # when blank — see build_prompt()/build_social_prompt().
+        if c_name.strip():
+            st.session_state["persona_name"] = c_name.strip()
+            st.session_state["persona_who"] = f"a customer named {c_name.strip()}"
+        else:
+            st.session_state["persona_name"] = None
+            st.session_state["persona_who"] = None
+
+        if show_authority:
+            sticky_checkbox(t("authority_checkbox"), "identity_verified", default=True)
+
+        sticky_selectbox(
+            t("register_label"), [t("register_default_opt")] + list(TONES.keys()),
+            "identity_register",
+        )
+        sticky_selectbox(
+            t("territory_label"), [t("territory_default_opt")] + list(LOCATION_CONTEXT.keys()),
+            "identity_territory",
+        )
+
+    def current_user_from_identity() -> dict:
+        """Builds the `user` dict the A.R.T. pipeline reads, straight from
+        the shared identity_* session_state keys render_identity_fields()
+        writes to — one source of truth whether those widgets were filled
+        on the gate screen, edited later in Settings, or (staff/admin,
+        who bypass the gate) never rendered at all this session."""
+        mood = st.session_state.get("identity_register")
+        segment = st.session_state.get("identity_territory")
+        return {
+            "id_verified": st.session_state.get("identity_verified", True),
+            "mood": None if (not mood or mood.startswith("(")) else mood,
+            "segment": None if (not segment or segment.startswith("(")) else segment,
+        }
+
+    # 5. CUSTOMER GATE — first screen a real customer sees. Must be filled
+    # in before the chat UI is reachable; staff bypass it entirely via the
+    # "Staff login" link below, straight to the existing login portal.
+    if st.session_state.page_state == 'customer_gate':
+        st.title(t("gate_title"))
+
+        render_language_picker(t)
+        render_identity_fields(t, show_authority=False)
+
+        if st.button(t("gate_continue_btn")):
+            segment = st.session_state.get("identity_territory", "")
+            if not segment or segment.startswith("("):
+                st.warning(t("gate_territory_required_warning"))
+            else:
+                set_state('customer_view')
+                st.rerun()
+
+        st.divider()
+        if st.button(t("staff_login_link")):
+            set_state('admin_login')
+            st.rerun()
+        return
+
+    # 5b. STAFF LOGIN PORTAL
     if st.session_state.page_state == 'admin_login':
         st.title("Staff Login")
 
@@ -3814,7 +3982,7 @@ def streamlit_app():
         if locked:
             wait = int(st.session_state.login_locked_until - now) + 1
             st.error(f"Too many failed attempts. Try again in {wait}s.")
-            st.button("Back", on_click=set_state, args=('customer_view',))
+            st.button("Back", on_click=set_state, args=('customer_gate',))
             return
 
         username = st.text_input("Username")
@@ -3837,17 +4005,22 @@ def streamlit_app():
                         st.rerun()
                     st.error("Invalid credentials.")
         with col2:
-            st.button("Back", on_click=set_state, args=('customer_view',))
+            st.button("Back", on_click=set_state, args=('customer_gate',))
         return
 
     # 6. APP DATA LOAD
     is_admin = (st.session_state.page_state == 'admin_view')
 
-    # Defaults for the real (non-simulated) customer flow. The Settings
-    # panel below overrides both when a staff member opens it to test as a
-    # simulated customer — but it's collapsed by default, so a real
-    # customer's first chat message must work without ever opening it.
-    user = None
+    # FIXED: was `user = None`, relying on answer()'s own
+    # `user or {"id_verified": True, ..., "segment": "Domestic"}` fallback
+    # for any customer who reached the chat without opening Settings —
+    # which was every customer, silently defaulting to Domestic/verified.
+    # Now every session that reaches this point has EITHER completed the
+    # customer gate (segment/register/name confirmed) OR is staff (who
+    # bypass the gate; Settings still lets them simulate a segment).
+    # Reads straight from the shared identity_* keys; Settings below
+    # re-derives it again after its own copy of the same widgets renders.
+    user = current_user_from_identity()
     sim_language = st.session_state.ui_language
 
     @st.cache_resource                               
@@ -3935,22 +4108,13 @@ def streamlit_app():
 
         if st.session_state.get("show_settings", False):
             with st.expander(t("settings_expander"), expanded=True):
-                # key="ui_language" binds this widget straight to
-                # st.session_state.ui_language: Streamlit syncs the new pick
-                # into session_state BEFORE this script body runs, so
-                # t("language_label") below sees the new language immediately.
-                # A manual `st.session_state.ui_language = st.selectbox(...)`
-                # reassignment reads the OLD language for the label argument
-                # (evaluated before the assignment lands), so the picker's
-                # own label always lagged one click behind — every other
-                # translated element updates fine since it's downstream of
-                # that same assignment.
-                st.selectbox(
-                    t("language_label"),
-                    list(UI_LANGUAGES.keys()),
-                    index=list(UI_LANGUAGES.keys()).index(st.session_state.ui_language),
-                    key="ui_language"
-                )
+                # render_language_picker() writes st.session_state.ui_language
+                # (the plain, never-GC'd shadow key) before this line runs,
+                # so t("language_label") below already sees the new pick —
+                # same immediate-reactivity guarantee the old inline call
+                # had, now via sticky_selectbox() instead of a bare widget
+                # key directly (see the sticky_* helpers for why that changed).
+                render_language_picker(t)
                 sim_language = st.session_state.ui_language
 
                 st.subheader(t("accessibility_header"))
@@ -4056,31 +4220,12 @@ def streamlit_app():
 
                 st.divider()
                 st.subheader(t("user_in_front_header"))
-                c_name = st.text_input(t("customer_name_label"), placeholder=t("customer_name_placeholder"))
-
-                # FIXED: Was mutating the module-level PERSONA dict, which
-                # is shared across every concurrent Streamlit session on
-                # this process — one staff member's typed name could leak
-                # into another staff member's simultaneous chat. Now
-                # session-scoped, and blank stays None (build_prompt()/
-                # build_social_prompt() supply the "don't guess" instruction
-                # themselves) instead of the vague "a customer" placeholder.
-                if c_name.strip():
-                    st.session_state["persona_name"] = c_name.strip()
-                    st.session_state["persona_who"] = f"a customer named {c_name.strip()}"
-                else:
-                    st.session_state["persona_name"] = None
-                    st.session_state["persona_who"] = None
-
-                sim_verified = st.checkbox(t("authority_checkbox"), value=True)
-                sim_mood = st.selectbox(t("register_label"), [t("register_default_opt")] + list(TONES.keys()))
-                sim_segment = st.selectbox(t("territory_label"), [t("territory_default_opt")] + list(LOCATION_CONTEXT.keys()))
-
-                user = {
-                    "id_verified": sim_verified,
-                    "mood":    None if sim_mood.startswith("(") else sim_mood,
-                    "segment": None if sim_segment.startswith("(") else sim_segment,
-                }
+                # Same widgets (and keys) as the customer gate screen — see
+                # render_identity_fields()'s docstring. Lets a customer who
+                # already passed the gate correct a typo or change category
+                # mid-session, and lets staff still use this as a simulator.
+                render_identity_fields(t)
+                user = current_user_from_identity()
 
                 st.divider()
                 st.subheader(t("red_line_header"))
@@ -4107,7 +4252,10 @@ def streamlit_app():
             with account_action_col:
                 if st.button("Log out", use_container_width=True, key="account_logout_btn"):
                     st.session_state.staff_account = None
-                    set_state('customer_view')
+                    # Back to the gate, not straight to chat — whoever is
+                    # at the keyboard after a staff logout may not be the
+                    # same person the identity fields were last set for.
+                    set_state('customer_gate')
                     st.rerun()
         else:
             with account_info_col:

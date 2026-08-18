@@ -314,16 +314,80 @@ print(f"        (offline baseline score: {passed}/{len(rows)} — "
 section("11 · Streamlit routing states")
 # =====================================================================
 src = open(b.__file__, encoding="utf-8").read()
-check("opens on customer_view",
-      "st.session_state.page_state = 'customer_view'" in src)
+# FIXED (2026-08-18): a fresh session now opens on the customer gate, not
+# straight into the chat — see Section 16 for the gate's own coverage.
+check("opens on customer_gate",
+      "st.session_state.page_state = 'customer_gate'" in src)
 check("no orphaned homepage state", "'homepage'" not in src,
       "a button still routes to the deleted homepage")
 check("admin login view exists", "page_state == 'admin_login'" in src)
+check("customer gate view exists", "page_state == 'customer_gate'" in src)
 check("sidebar has admin login button", "Admin login" in src)
 check("sidebar has log out", "Log out" in src)
 check("set_page_config is first st call",
       src.index("st.set_page_config") < src.index("st.cache_data"),
       "set_page_config must precede every other st.* call")
+
+
+# =====================================================================
+section("16 · Customer gate screen")
+# =====================================================================
+# Behavioral coverage for the gate's actual logic (as opposed to Section
+# 11's static "does this route exist" source greps) would need Streamlit's
+# AppTest harness, which nothing else in this suite uses — every other
+# page_state/sidebar/CSS feature in this project has been verified live
+# via the `browse` skill instead (see work notes). These are source-level
+# structural checks: the right pieces exist and are wired to each other,
+# not a substitute for the live walkthrough already done for this feature.
+check("customer_gate is a recognized page_state",
+      "'customer_view', 'admin_view', 'admin_login', 'customer_gate'" in src)
+check("gate blocks Continue without a real Territory pick",
+      "gate_territory_required_warning" in src and
+      'if not segment or segment.startswith("(")' in src)
+check("gate has a staff bypass that routes to admin_login, not admin_view directly",
+      'set_state(\'admin_login\')' in src)
+check("admin_login's Back returns to the gate, not straight past it",
+      src.count("args=('customer_gate',)") >= 2,
+      "expected 2 Back buttons (locked-out + normal) routed to customer_gate")
+check("staff logout returns to the gate",
+      "staff_account = None" in src and "set_state('customer_gate')" in src)
+check("gate and Settings share ONE identity-fields definition, not two copies",
+      src.count("def render_identity_fields") == 1 and
+      src.count('t("territory_label")') == 1,
+      "the widgets should be defined once in render_identity_fields() and called from both sites")
+check("render_identity_fields is actually called from both the gate and Settings",
+      "render_identity_fields(t, show_authority=False)" in src and
+      "render_identity_fields(t)" in src,
+      "expected 2 call sites: the customer gate (show_authority=False) and Settings (default)")
+check("real customer identity no longer silently defaults to Domestic/verified",
+      src.count("current_user_from_identity()") >= 2 and
+      "sim_verified = st.checkbox" not in src,
+      "the old inline sim_verified/sim_mood/sim_segment dict-building in Settings should be gone")
+
+# FIXED (2026-08-18): a key-bound Streamlit widget's session_state entry
+# is deleted at the end of any run that doesn't render that widget — the
+# gate and Settings are mutually exclusive render sites, so every shared
+# identity_*/ui_language field was silently resetting to its default the
+# first time either site went a run without rendering it. Caught live
+# (Territory reset to "(unknown)" after completing the gate with
+# "Domestic" selected), fixed by shadowing each widget's value into a
+# separate, plain (non-widget) session_state key every render.
+check("sticky_* helpers exist to survive the widget-key GC gap",
+      "def sticky_text_input" in src and "def sticky_checkbox" in src and
+      "def sticky_selectbox" in src,
+      "identity_*/ui_language fields must not rely on a bare widget key surviving across the gate<->Settings gap")
+check("every sticky widget uses a disposable __widget key, not the plain shadow key, for its own Streamlit key=",
+      src.count('key=f"{session_key}__widget"') == 3,
+      "sticky_text_input/checkbox/selectbox should each pass key=f\"{session_key}__widget\"")
+check("the language picker also goes through the sticky pattern (same bug, pre-existing, Settings-only)",
+      "def render_language_picker" in src and
+      "sticky_selectbox(t(\"language_label\")" in src and
+      'key="ui_language"' not in src,
+      "no remaining bare key=\"ui_language\" widget binding — must go through sticky_selectbox now")
+check("gate and Settings language pickers are the same call, not two copies",
+      src.count("def render_language_picker") == 1 and
+      src.count("render_language_picker(t)") == 3,  # 1 def line + 2 real calls
+      "expected exactly 1 definition and 2 call sites: the customer gate and Settings")
 
 
 # =====================================================================
