@@ -36,8 +36,6 @@ import html        # safely escapes HTML for hover tooltips
 import hmac        # constant-time string comparison for the admin login check
 import hashlib     # PBKDF2 password hashing for the staff account store
 import secrets     # cryptographically random salts/tokens for password hashing
-import smtplib     # sends the staff login's 2-step verification code by email
-from email.message import EmailMessage   # builds the verification-code email
 from collections import Counter    # counts how many times each word appears
 from typing import Optional        # lets us say "this might return nothing"
 from typing import TypedDict, Optional, List # Imports type hinting tools to define the shape of our graph state memory
@@ -395,9 +393,7 @@ def load_keys() -> dict:
             _ORIGINS[name] = None                    # note that this key is missing
 
     # LLM_PROVIDER is not a key, but it is a setting worth loading the same way.
-    for setting in ("LLM_PROVIDER", "ADMIN_USERNAME", "ADMIN_PASSWORD",
-                     "SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD",
-                     "SMTP_FROM_EMAIL", "SMTP_USE_TLS"): # FIXED: SMTP settings were never loaded from .env — send_login_code() always saw an empty environment and fell back to the on-screen code, even with real SMTP credentials configured
+    for setting in ("LLM_PROVIDER", "ADMIN_USERNAME", "ADMIN_PASSWORD"): # FIXED: Added admin credentials           # a short list of extra settings
         if not os.getenv(setting):                   # only if not already set
             value = from_secrets.get(setting) or from_env.get(setting)  # look in both files
             if value:                                # if we found something
@@ -3236,66 +3232,6 @@ def remove_staff_account(username: str) -> tuple:
     return True, f"Account '{username}' removed."
 
 
-# ---------------------------------------------------------------------
-# STAFF LOGIN · 2-STEP VERIFICATION — a code sent to an email address
-# typed in at login time, on top of the existing username/password check.
-# ---------------------------------------------------------------------
-LOGIN_CODE_TTL_SECONDS = 300   # 5 minutes
-
-
-def generate_login_code() -> str:
-    """A random 6-digit code for the staff login's second step.
-
-    secrets.randbelow, not random — this gates access to the admin view,
-    so it needs to be unguessable, not just "looks random".
-    """
-    return f"{secrets.randbelow(1000000):06d}"
-
-
-def is_login_code_expired(issued_at: float, now: Optional[float] = None) -> bool:
-    """Has a login code's TTL run out? `now` is injectable so tests don't
-    have to sleep for real."""
-    now = time.time() if now is None else now
-    return (now - issued_at) > LOGIN_CODE_TTL_SECONDS
-
-
-def send_login_code(email: str, code: str) -> bool:
-    """Email a login code via SMTP. Returns True on success, False on any
-    failure — no SMTP host configured, a bad password, a network error, a
-    refused send. Never raises: the caller falls back to showing the code
-    on-screen (see the .env.example comment this implements), so a broken
-    mail server must degrade gracefully, not crash the login flow.
-    """
-    host = os.getenv("SMTP_HOST")
-    if not host:
-        return False
-    try:
-        port = int(os.getenv("SMTP_PORT", "587"))
-        username = os.getenv("SMTP_USERNAME", "")
-        password = os.getenv("SMTP_PASSWORD", "")
-        sender = os.getenv("SMTP_FROM_EMAIL") or username
-        use_tls = os.getenv("SMTP_USE_TLS", "true").strip().lower() != "false"
-
-        msg = EmailMessage()
-        msg["Subject"] = f"{BOT_NAME} staff login code"
-        msg["From"] = sender
-        msg["To"] = email
-        msg.set_content(
-            f"Your {BOT_NAME} staff login code is: {code}\n\n"
-            f"This code expires in {LOGIN_CODE_TTL_SECONDS // 60} minutes."
-        )
-
-        with smtplib.SMTP(host, port, timeout=10) as server:
-            if use_tls:
-                server.starttls()
-            if username and password:
-                server.login(username, password)
-            server.send_message(msg)
-        return True
-    except Exception:
-        return False
-
-
 def reset_chat_session(state: Optional[dict] = None) -> dict:
     """Reset chat UI state without breaking the rest of the sidebar settings."""
     state = initialize_sidebar_state(state)
@@ -3702,15 +3638,13 @@ def streamlit_app():
 
         # Brute-force throttle: a Streamlit button can be clicked as fast as
         # a script can drive it, so the login check itself is not a rate
-        # limit. After 5 wrong attempts (wrong password OR wrong code),
-        # lock this session out of the login form for 60 seconds. Per-
-        # session, not global — good enough to stop naive automated
-        # guessing without needing a real backend.
+        # limit. After 5 wrong attempts, lock this session out of the login
+        # form for 60 seconds. Per-session, not global — good enough to
+        # stop naive automated guessing without needing a real backend.
         LOGIN_MAX_ATTEMPTS = 5
         LOGIN_LOCKOUT_SECONDS = 60
         st.session_state.setdefault("login_attempts", 0)
         st.session_state.setdefault("login_locked_until", 0.0)
-        st.session_state.setdefault("pending_login", None)
 
         now = time.time()
         locked = now < st.session_state.login_locked_until
@@ -3721,84 +3655,25 @@ def streamlit_app():
             st.button("Back", on_click=set_state, args=('customer_view',))
             return
 
-        def _register_login_failure(message: str):
-            """Shared throttle bump for a wrong password OR a wrong code —
-            both spend from the same attempt budget."""
-            st.session_state.login_attempts += 1
-            if st.session_state.login_attempts >= LOGIN_MAX_ATTEMPTS:
-                st.session_state.login_locked_until = time.time() + LOGIN_LOCKOUT_SECONDS
-                st.session_state.login_attempts = 0
-                st.session_state.pending_login = None
-                st.rerun()
-            st.error(message)
-
-        pending = st.session_state.pending_login
-
-        # STEP 2 — a password check already passed; verify the code sent
-        # (or shown, if SMTP isn't configured) to the email typed in Step 1.
-        if pending:
-            st.caption(f"A login code was sent to {pending['email']}. "
-                       f"It expires in {LOGIN_CODE_TTL_SECONDS // 60} minutes.")
-            if pending.get("_shown_code"):
-                st.info(f"SMTP not configured — your code: {pending['_shown_code']}")
-            code_input = st.text_input("6-digit code", max_chars=6)
-
-            col1, col2, col3 = st.columns([1, 1, 4])
-            with col1:
-                if st.button("Verify"):
-                    if is_login_code_expired(pending["issued_at"]):
-                        st.session_state.pending_login = None
-                        st.error("That code expired. Log in again to get a new one.")
-                    elif hmac.compare_digest(code_input.strip(), pending["code"]):
-                        st.session_state.login_attempts = 0
-                        st.session_state.staff_account = pending["account"]
-                        st.session_state.pending_login = None
-                        set_state('admin_view')
-                        st.rerun()
-                    else:
-                        _register_login_failure("Wrong code.")
-            with col2:
-                if st.button("Resend"):
-                    new_code = generate_login_code()
-                    pending["code"] = new_code
-                    pending["issued_at"] = time.time()
-                    if send_login_code(pending["email"], new_code):
-                        pending.pop("_shown_code", None)
-                        st.success("New code sent.")
-                    else:
-                        pending["_shown_code"] = new_code
-                    st.session_state.pending_login = pending
-                    st.rerun()
-            with col3:
-                if st.button("Back"):
-                    st.session_state.pending_login = None
-                    set_state('customer_view')
-                    st.rerun()
-            return
-
-        # STEP 1 — username, password, and where to send the code.
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
-        email = st.text_input("Email (to receive your login code)")
 
         col1, col2 = st.columns([1, 5])
         with col1:
             if st.button("Login"):
                 account = authenticate_staff(username, password)
-                if not account:
-                    _register_login_failure("Invalid credentials.")
-                elif not email.strip():
-                    st.error("Enter an email address to receive your login code.")
-                else:
-                    code = generate_login_code()
-                    new_pending = {
-                        "account": account, "email": email.strip(),
-                        "code": code, "issued_at": time.time(),
-                    }
-                    if not send_login_code(email.strip(), code):
-                        new_pending["_shown_code"] = code
-                    st.session_state.pending_login = new_pending
+                if account:
+                    st.session_state.login_attempts = 0
+                    st.session_state.staff_account = account
+                    set_state('admin_view')
                     st.rerun()
+                else:
+                    st.session_state.login_attempts += 1
+                    if st.session_state.login_attempts >= LOGIN_MAX_ATTEMPTS:
+                        st.session_state.login_locked_until = time.time() + LOGIN_LOCKOUT_SECONDS
+                        st.session_state.login_attempts = 0
+                        st.rerun()
+                    st.error("Invalid credentials.")
         with col2:
             st.button("Back", on_click=set_state, args=('customer_view',))
         return
