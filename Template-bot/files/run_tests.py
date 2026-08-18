@@ -461,6 +461,42 @@ for fn_name in ("add_new_chat", "delete_chat"):
         f"{fn_name}() creates a chat dict without titled: False"
     )
 
+# The reply and every source excerpt render through Streamlit's markdown
+# pipeline, which treats a PAIR of literal "$" characters as inline LaTeX
+# math delimiters — every calculator reply quotes 2-3 "EC$" amounts, so
+# without escaping, replies render as garbled, unparsed Markdown.
+check("escape_markdown_dollars exists", hasattr(b, "escape_markdown_dollars"))
+check("escape_markdown_dollars escapes a single dollar sign",
+      b.escape_markdown_dollars("EC$135.54") == "EC\\$135.54",
+      b.escape_markdown_dollars("EC$135.54"))
+check("escape_markdown_dollars escapes multiple dollar signs",
+      b.escape_markdown_dollars("EC$135.54 per month and EC$1,649.07 per year")
+      == "EC\\$135.54 per month and EC\\$1,649.07 per year",
+      b.escape_markdown_dollars("EC$135.54 per month and EC$1,649.07 per year"))
+check("escape_markdown_dollars is a no-op when there is no dollar sign",
+      b.escape_markdown_dollars("no currency figures here") == "no currency figures here",
+      b.escape_markdown_dollars("no currency figures here"))
+
+check("chat history redisplay escapes dollar signs before st.markdown",
+      'st.markdown(escape_markdown_dollars(m["content"]))' in app_source,
+      "st.markdown(m[\"content\"]) is not wrapped with escape_markdown_dollars()")
+check("live streamed reply escapes dollar signs before st.write_stream",
+      'st.write_stream(_stream_words(escape_markdown_dollars(out["reply"])))' in app_source,
+      "st.write_stream(_stream_words(out[\"reply\"])) is not wrapped with escape_markdown_dollars()")
+caption_escape_count = app_source.count('st.caption(escape_markdown_dollars(h["text"]))')
+check("every source-excerpt caption escapes dollar signs",
+      caption_escape_count >= 3,
+      f"expected at least 3 escaped st.caption(h['text']) call sites, found {caption_escape_count}")
+
+# Regression guard: the raw, unescaped reply must still be what's stored in
+# history and what's handed to TTS — only the render call sites should change.
+check("chat history still stores the raw (unescaped) reply text",
+      '{"role": "assistant", "content": out["reply"], "hits": out["hits"]}' in app_source,
+      "history storage line changed shape — TTS/history must keep the raw reply")
+check("TTS still receives the raw (unescaped) reply text",
+      "generate_google_tts(out[\"reply\"]" in app_source
+      and "generate_elevenlabs_tts(out[\"reply\"])" in app_source,
+      "TTS call sites must keep passing the raw, unescaped out[\"reply\"]")
 
 # =====================================================================
 section("13 · Persona identity (session-scoped, no fabricated names)")

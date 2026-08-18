@@ -554,6 +554,22 @@ def dress(register: str, text: str) -> str:
     voice = TONES.get(register, TONES[DEFAULT_REGISTER])   # .get() avoids a crash on an unknown mood
     return voice(text)                               # call that register's little function
 
+
+def escape_markdown_dollars(text: str) -> str:
+    """Escape literal "$" so Streamlit's markdown renderer doesn't treat a
+    pair of them as inline LaTeX math delimiters. Every calculator reply
+    quotes 2-3 EC$ amounts, which collide with that by design — without
+    this, a reply with two dollar signs renders as garbled, unparsed
+    Markdown between them (bold markers show up literally, spacing
+    collapses). Display-time only: the raw text stored in chat history and
+    handed to text-to-speech must NOT be escaped — only what actually gets
+    passed to st.markdown/st.caption/st.write_stream.
+    """
+    # FIXED: was unescaped everywhere the reply/source-excerpt text got
+    # rendered, so any answer quoting two or more EC$ amounts (i.e. every
+    # calculator answer) rendered broken.
+    return text.replace("$", "\\$")
+
 # ---------------------------------------------------------------------
 # 2.4 · DIGNITY IN WORDS (Day 4) — jargon translated into plain English
 # ---------------------------------------------------------------------
@@ -3965,12 +3981,12 @@ def streamlit_app():
             for m in st.session_state.messages:
                 msg_avatar = bot_avatar if m["role"] == "assistant" else None
                 with st.chat_message(m["role"], avatar=msg_avatar):
-                    st.markdown(m["content"])
+                    st.markdown(escape_markdown_dollars(m["content"]))
                     if m.get("hits"):
                         with st.expander(t("sources_used")):
                             for i, h in enumerate(m["hits"], 1):
                                 st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")
-                                st.caption(h["text"])
+                                st.caption(escape_markdown_dollars(h["text"]))
 
         if "pending_voice_text" not in st.session_state:
             st.session_state.pending_voice_text = ""
@@ -4017,7 +4033,7 @@ def streamlit_app():
                                      persona_name=st.session_state.get("persona_name"),
                                      persona_who=st.session_state.get("persona_who"))
 
-                    st.write_stream(_stream_words(out["reply"]))
+                    st.write_stream(_stream_words(escape_markdown_dollars(out["reply"])))
 
                     # --- UPDATED: TTS Generation with Engine Router ---
                     if st.session_state.accessibility_settings.get("tts"):
@@ -4059,7 +4075,7 @@ def streamlit_app():
                         with st.expander(t("sources_used")):
                             for i, h in enumerate(out["hits"], 1):
                                 st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")
-                                st.caption(h["text"])
+                                st.caption(escape_markdown_dollars(h["text"]))
 
             # Save assistant reply to history
             st.session_state.messages.append(
@@ -4314,12 +4330,12 @@ def streamlit_app():
                 if res["ok"]: st.success("Awaiting approval")
                 else: st.error(res["error"])               
 
-        with tab_sources:                                
+        with tab_sources:
             st.subheader("RAG Search Test")
-            probe = st.text_input("Test query", "how much does an ac cost") 
-            for i, h in enumerate(retrieve_chunks(probe, index), 1): 
-                st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")   
-                st.caption(h["text"])                    
+            probe = st.text_input("Test query", "how much does an ac cost")
+            for i, h in enumerate(retrieve_chunks(probe, index), 1):
+                st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")
+                st.caption(escape_markdown_dollars(h["text"]))
 
         with tab_eval:
             st.subheader("Evaluations")
