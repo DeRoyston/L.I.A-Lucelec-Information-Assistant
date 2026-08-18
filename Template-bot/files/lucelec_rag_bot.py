@@ -169,10 +169,25 @@ code {
 [data-testid="stChatInput"] textarea::placeholder {
     color: #9aa1ab !important;
 }
-.stTextInput input, .stTextArea textarea, .stNumberInput input,
-.stSelectbox div[data-baseweb="select"] > div {
+.stTextInput input, .stTextArea textarea, .stNumberInput input {
     background-color: #1e222b !important;
     color: #fafafa !important;
+}
+/* st.selectbox's CLOSED box — this Streamlit version replaced the old
+   BaseWeb [data-baseweb="select"] markup with a react-aria ComboBox
+   (input[role="combobox"] + a chevron button, wrapped in [role="group"]),
+   so the rule above that used to catch it stopped matching anything and
+   every selectbox in the app quietly stayed white. */
+.stSelectbox [role="group"] {
+    background-color: #1e222b !important;
+    border-color: #3a3f4b !important;
+}
+.stSelectbox input[role="combobox"] {
+    background-color: transparent !important;
+    color: #fafafa !important;
+}
+.stSelectbox button[aria-haspopup="listbox"] svg {
+    fill: #fafafa !important;
 }
 [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-header"],
 [data-testid="stBaseButton-headerNoPadding"], [data-testid="stChatInputSubmitButton"] {
@@ -265,6 +280,16 @@ code {
     background-color: #2a2f3a !important;
 }
 [data-testid="stPopoverBody"] { background-color: #1e222b !important; }
+/* The header kebab ("Main menu": Rerun/Auto rerun/Clear cache/Print/Record
+   screen) is Streamlit's own chrome, rendered in a portal
+   (stMainMenuPopover) separate from every app testid above — same miss as
+   the selectbox/popover portals, just a different Streamlit-owned menu. */
+[data-testid="stMainMenuPopover"] {
+    background-color: #1e222b !important;
+    border-color: #3a3f4b !important;
+}
+[data-testid="stMainMenuPopover"] * { color: #fafafa !important; }
+[data-testid^="stMainMenuItem"]:hover { background-color: #2a2f3a !important; }
 """
 
 POLISH_CSS = """
