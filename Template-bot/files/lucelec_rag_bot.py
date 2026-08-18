@@ -130,6 +130,15 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
 [data-testid="stChatInput"] {
     background-color: #1e222b !important;
 }
+/* stExpander's own background above covers its BODY, but the clickable
+   <summary> header is a separate element the dark rule never reached —
+   it kept Streamlit's light-theme default (near-white bg, near-white
+   text), rendering as a blank white bar with invisible label text. Hits
+   every expander in the app: Settings, "Sources used", RAG Search Test. */
+[data-testid="stExpander"] summary {
+    background-color: #1e222b !important;
+    color: #fafafa !important;
+}
 [data-testid="stChatInput"] div {
     background-color: transparent !important;
 }
@@ -151,8 +160,14 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
     color: #fafafa !important;
     border-color: #3a3f4b !important;
 }
-[data-testid="stBaseButton-secondary"] *, [data-testid="stBaseButton-header"] *,
-[data-testid="stBaseButton-headerNoPadding"] *, [data-testid="stChatInputSubmitButton"] * {
+/* :not([fill="none"]) matters: some Material icons (e.g. the header kebab
+   menu's "more_vert") ship a second, invisible 24x24 backdrop <path
+   fill="none">  alongside the real glyph path, used as a hit-box. Forcing
+   fill on every descendant turned that backdrop solid white, fully
+   covering the three-dot icon drawn on top of it with a blank white
+   square. */
+[data-testid="stBaseButton-secondary"] *:not([fill="none"]), [data-testid="stBaseButton-header"] *:not([fill="none"]),
+[data-testid="stBaseButton-headerNoPadding"] *:not([fill="none"]), [data-testid="stChatInputSubmitButton"] *:not([fill="none"]) {
     color: #fafafa !important;
     fill: #fafafa !important;
 }
