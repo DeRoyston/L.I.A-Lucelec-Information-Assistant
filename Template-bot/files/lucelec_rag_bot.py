@@ -3889,6 +3889,21 @@ def streamlit_app():
         setdefault() already rely on; only the widget's OWN key changes."""
         sticky_selectbox(t("language_label"), list(UI_LANGUAGES.keys()), "ui_language")
 
+    def render_dark_mode_toggle():
+        """Predates the sticky_* helpers above but is the exact same fix
+        for the exact same Streamlit behavior: a widget's OWN key gets
+        wiped by any run that doesn't draw it (originally caught on the
+        admin-login transition — see git history — now also true of the
+        customer gate, which doesn't render this either). "dark_mode_toggle"
+        is disposable; "dark_mode" is the stable field DARK_MODE_CSS's
+        injection and initialize_sidebar_state's setdefault both read."""
+        dark_mode_now = st.toggle("🌙 Dark mode",
+                                   value=st.session_state.get("dark_mode", False),
+                                   key="dark_mode_toggle")
+        if dark_mode_now != st.session_state.get("dark_mode", False):
+            st.session_state.dark_mode = dark_mode_now
+            st.rerun()
+
     def render_identity_fields(t, show_authority: bool = True):
         """The shared "who is in front of you" widgets — Customer Name,
         [Authority], Register, Territory. Called from BOTH the customer
@@ -3946,6 +3961,7 @@ def streamlit_app():
         st.title(t("gate_title"))
 
         render_language_picker(t)
+        render_dark_mode_toggle()
         render_identity_fields(t, show_authority=False)
 
         if st.button(t("gate_continue_btn")):
@@ -4118,23 +4134,7 @@ def streamlit_app():
                 sim_language = st.session_state.ui_language
 
                 st.subheader(t("accessibility_header"))
-                # FIXED: Was `st.toggle(..., key="dark_mode")`, which ties
-                # the value directly to session_state["dark_mode"] — but
-                # Streamlit clears a widget's session_state entry on any
-                # rerun where that widget isn't drawn. The admin_login page
-                # (see the "5. STAFF LOGIN PORTAL" block) returns early
-                # before this sidebar ever renders, so logging in silently
-                # reset dark mode to off. A separate widget key that's only
-                # ever read here, written back into the stable "dark_mode"
-                # field (owned by initialize_sidebar_state's setdefault, not
-                # by this widget), survives being unmounted across the login
-                # transition.
-                dark_mode_now = st.toggle("🌙 Dark mode",
-                                           value=st.session_state.get("dark_mode", False),
-                                           key="dark_mode_toggle")
-                if dark_mode_now != st.session_state.get("dark_mode", False):
-                    st.session_state.dark_mode = dark_mode_now
-                    st.rerun()
+                render_dark_mode_toggle()
                 a11y_state = st.session_state.accessibility_settings
                 a11y_state["tts"] = st.checkbox(t("tts_checkbox"), value=a11y_state.get("tts", False))
 
