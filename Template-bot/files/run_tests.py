@@ -498,6 +498,19 @@ check("TTS still receives the raw (unescaped) reply text",
       and "generate_elevenlabs_tts(out[\"reply\"])" in app_source,
       "TTS call sites must keep passing the raw, unescaped out[\"reply\"]")
 
+# Regression guard: the dark mode toggle must NOT bind directly to
+# session_state["dark_mode"] via its own key — Streamlit clears a widget's
+# session_state entry on any rerun where that widget isn't drawn, and the
+# admin_login page (early return, no sidebar) skips drawing it entirely.
+check("dark mode toggle does not bind directly to the persisted key",
+      'st.toggle("🌙 Dark mode", key="dark_mode")' not in app_source,
+      "the toggle is bound directly to session_state[\"dark_mode\"] again — "
+      "this value gets wiped the moment the widget isn't drawn on a rerun, "
+      "e.g. logging in via the admin_login page's early return")
+check("dark mode toggle uses a separate widget key, written back explicitly",
+      'key="dark_mode_toggle"' in app_source
+      and "st.session_state.dark_mode = dark_mode_now" in app_source)
+
 # =====================================================================
 section("13 · Persona identity (session-scoped, no fabricated names)")
 # =====================================================================
