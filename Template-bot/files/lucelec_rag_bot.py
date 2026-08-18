@@ -4330,12 +4330,12 @@ def streamlit_app():
                 if res["ok"]: st.success("Awaiting approval")
                 else: st.error(res["error"])               
 
-        with tab_sources:
+        with tab_sources:                                
             st.subheader("RAG Search Test")
-            probe = st.text_input("Test query", "how much does an ac cost")
-            for i, h in enumerate(retrieve_chunks(probe, index), 1):
-                st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")
-                st.caption(escape_markdown_dollars(h["text"]))
+            probe = st.text_input("Test query", "how much does an ac cost") 
+            for i, h in enumerate(retrieve_chunks(probe, index), 1): 
+                st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")   
+                st.caption(escape_markdown_dollars(h["text"]))                    
 
         with tab_eval:
             st.subheader("Evaluations")
