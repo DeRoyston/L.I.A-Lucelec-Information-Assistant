@@ -3591,6 +3591,17 @@ def streamlit_app():
             "register_default_opt": "(read it from the message)",
             "territory_label": "Territory — which customer category?",
             "territory_default_opt": "(unknown)", "red_line_header": "The Red Line",
+            "register_options": {
+                "warm": "warm", "formal": "formal", "anxious": "anxious",
+                "bereaved": "bereaved", "frustrated": "frustrated",
+                "confused": "confused", "rushed": "rushed",
+            },
+            "territory_options": {
+                "Domestic": "Domestic", "Commercial": "Commercial", "Industrial": "Industrial",
+                "Hotel / Tourism": "Hotel / Tourism",
+                "Government / Public Sector": "Government / Public Sector",
+                "Agricultural": "Agricultural",
+            },
             "gate_title": "Before we begin", "gate_continue_btn": "Continue",
             "gate_territory_required_warning": "Please choose which customer category best describes you before continuing.",
             "staff_login_link": "LUCELEC staff? Log in here",
@@ -3636,6 +3647,17 @@ def streamlit_app():
             "register_default_opt": "(leerlo del mensaje)",
             "territory_label": "Territorio — ¿qué categoría de cliente?",
             "territory_default_opt": "(desconocido)", "red_line_header": "La línea roja",
+            "register_options": {
+                "warm": "cálido", "formal": "formal", "anxious": "ansioso",
+                "bereaved": "en duelo", "frustrated": "frustrado",
+                "confused": "confundido", "rushed": "apresurado",
+            },
+            "territory_options": {
+                "Domestic": "Doméstico", "Commercial": "Comercial", "Industrial": "Industrial",
+                "Hotel / Tourism": "Hotel / Turismo",
+                "Government / Public Sector": "Gobierno / Sector público",
+                "Agricultural": "Agrícola",
+            },
             "gate_title": "Antes de empezar", "gate_continue_btn": "Continuar",
             "gate_territory_required_warning": "Por favor elija la categoría de cliente que mejor le describe antes de continuar.",
             "staff_login_link": "¿Personal de LUCELEC? Inicie sesión aquí",
@@ -3682,6 +3704,17 @@ def streamlit_app():
             "register_default_opt": "(le déduire du message)",
             "territory_label": "Territoire — quelle catégorie de client ?",
             "territory_default_opt": "(inconnu)", "red_line_header": "La ligne rouge",
+            "register_options": {
+                "warm": "chaleureux", "formal": "formel", "anxious": "anxieux",
+                "bereaved": "endeuillé", "frustrated": "frustré",
+                "confused": "confus", "rushed": "pressé",
+            },
+            "territory_options": {
+                "Domestic": "Domestique", "Commercial": "Commercial", "Industrial": "Industriel",
+                "Hotel / Tourism": "Hôtel / Tourisme",
+                "Government / Public Sector": "Gouvernement / Secteur public",
+                "Agricultural": "Agricole",
+            },
             "gate_title": "Avant de commencer", "gate_continue_btn": "Continuer",
             "gate_territory_required_warning": "Veuillez choisir la catégorie de client qui vous correspond le mieux avant de continuer.",
             "staff_login_link": "Personnel de LUCELEC ? Connectez-vous ici",
@@ -3727,6 +3760,17 @@ def streamlit_app():
             "register_default_opt": "(li sa nan mesaj la)",
             "territory_label": "Teritwa — ki kategori kliyan?",
             "territory_default_opt": "(pa konnèt)", "red_line_header": "Liy Wouj la",
+            "register_options": {
+                "warm": "cho", "formal": "fòmèl", "anxious": "enkyèt",
+                "bereaved": "an dèy", "frustrated": "fristre",
+                "confused": "konfwèt", "rushed": "prese",
+            },
+            "territory_options": {
+                "Domestic": "Domestik", "Commercial": "Kòmèsyal", "Industrial": "Endistriyèl",
+                "Hotel / Tourism": "Otèl / Touris",
+                "Government / Public Sector": "Gouvènman / Sektè piblik",
+                "Agricultural": "Agrikilti",
+            },
             "gate_title": "Avan nou kòmanse", "gate_continue_btn": "Kontinye",
             "gate_territory_required_warning": "Tanpri chwazi kategori kliyan ki dekri ou byen anvan ou kontinye.",
             "staff_login_link": "Ou se anplwaye LUCELEC? Konekte isit la",
@@ -3761,6 +3805,35 @@ def streamlit_app():
     def t(key: str) -> str:
         """Helper function to fetch the translated string for the current language."""
         return UI_LANGUAGES.get(st.session_state.ui_language, UI_LANGUAGES["English"]).get(key, key)
+
+    def t_option(mapping_key: str, raw_value: str) -> str:
+        """Translated DISPLAY label for a Register/Territory dropdown
+        option, while the actual returned/stored value stays the raw
+        English key (TONES/LOCATION_CONTEXT dict keys, threaded through
+        check_territory()/build_prompt()/etc — those must never change
+        with the UI language). Falls back to the raw English value if a
+        language's mapping is missing an entry, same as t()'s own
+        fallback-to-key behavior."""
+        mapping = UI_LANGUAGES.get(st.session_state.ui_language, UI_LANGUAGES["English"]).get(mapping_key, {})
+        return mapping.get(raw_value, raw_value)
+
+    # FIXED (2026-08-18): sticky_selectbox only writes the plain
+    # "ui_language" shadow key AFTER st.selectbox() is called inside
+    # render_language_picker() — but t() calls that happen EARLIER in
+    # script order (st.title(t("gate_title")) above the picker, the
+    # picker's own label, anything before render_language_picker() runs)
+    # read the plain key BEFORE that write-back happens this run, so they
+    # showed the previous language for one extra render. Streamlit
+    # already seeds a key-bound widget's session_state entry with the
+    # NEW value at the very start of a rerun triggered by that widget —
+    # before ANY script code runs, including code positioned above the
+    # widget's own call site — so reading the disposable widget key here,
+    # this early, sees the live pick immediately. This is the same
+    # "picker's own label lags one click behind" issue the original
+    # single-key implementation only half dodged (see the git history);
+    # this fixes it for every t() call, not just the picker's label.
+    if "ui_language__widget" in st.session_state:
+        st.session_state.ui_language = st.session_state["ui_language__widget"]
     # --------------------------------------
 
     # 2. ACCESSIBILITY CSS INJECTION — runs every rerun (not gated behind
@@ -3873,10 +3946,11 @@ def streamlit_app():
         st.session_state[session_key] = value
         return value
 
-    def sticky_selectbox(label: str, options: list, session_key: str) -> str:
+    def sticky_selectbox(label: str, options: list, session_key: str, format_func=str) -> str:
         current = st.session_state.get(session_key)
         index = options.index(current) if current in options else 0
-        value = st.selectbox(label, options, index=index, key=f"{session_key}__widget")
+        value = st.selectbox(label, options, index=index, key=f"{session_key}__widget",
+                              format_func=format_func)
         st.session_state[session_key] = value
         return value
 
@@ -3931,13 +4005,22 @@ def streamlit_app():
         if show_authority:
             sticky_checkbox(t("authority_checkbox"), "identity_verified", default=True)
 
+        # format_func translates the DISPLAYED label only — the value
+        # returned/stored (and everything downstream: check_territory(),
+        # TONES[...], build_prompt()) stays the raw English key. The
+        # placeholder string isn't a real TONES/LOCATION_CONTEXT key, so
+        # t_option()'s fallback-to-raw-value quietly leaves it as the
+        # already-translated register_default_opt/territory_default_opt
+        # text from the list itself.
         sticky_selectbox(
             t("register_label"), [t("register_default_opt")] + list(TONES.keys()),
             "identity_register",
+            format_func=lambda v: t_option("register_options", v),
         )
         sticky_selectbox(
             t("territory_label"), [t("territory_default_opt")] + list(LOCATION_CONTEXT.keys()),
             "identity_territory",
+            format_func=lambda v: t_option("territory_options", v),
         )
 
     def current_user_from_identity() -> dict:
