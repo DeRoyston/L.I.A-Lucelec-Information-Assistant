@@ -754,6 +754,71 @@ check("an unrecognized language falls back to English, doesn't crash",
 
 
 # =====================================================================
+section("18 · Domain-lane offline replies are localized too")
+# =====================================================================
+# Same bug class as Section 17, different lane: chatbot()'s phrase-matched
+# "template-rule" instant replies and extractive_answer()'s two wrapper
+# strings were English-only regardless of `language`. The quoted
+# retrieved sentences inside extractive_answer() stay English on purpose
+# (extracted verbatim from this app's English-only source_documents/*.md
+# — no corpus to translate FROM, see its docstring) — only the wrapper
+# text around them is checked here.
+check("DOMAIN_TEMPLATE_REPLIES is keyed by language, not just by reply kind",
+      set(b.DOMAIN_TEMPLATE_REPLIES.keys()) >= {"English", "Spanish", "French", "French Creole (Kwéyòl)"},
+      list(b.DOMAIN_TEMPLATE_REPLIES.keys()))
+for lang in ("Spanish", "French", "French Creole (Kwéyòl)"):
+    check(f"DOMAIN_TEMPLATE_REPLIES['{lang}'] covers every key English does",
+          set(b.DOMAIN_TEMPLATE_REPLIES[lang].keys()) == set(b.DOMAIN_TEMPLATE_REPLIES["English"].keys()),
+          (set(b.DOMAIN_TEMPLATE_REPLIES["English"].keys()) - set(b.DOMAIN_TEMPLATE_REPLIES[lang].keys())))
+
+check("domain_template() interpolates kwargs into the right language's template",
+      b.domain_template("French", "kwh_year", annual="360", monthly_kwh="30.00", monthly_cost="11.40")
+      == "Si votre étiquette indique 360 kWh/an, cela correspond à environ 30.00 kWh par mois. "
+         "Au tarif effectif actuel, cela représente environ EC$11.40 par mois.",
+      b.domain_template("French", "kwh_year", annual="360", monthly_kwh="30.00", monthly_cost="11.40"))
+check("domain_template() falls back to English for an unrecognized language",
+      b.domain_template("Klingon", "no_documents") == b.domain_template("English", "no_documents"),
+      b.domain_template("Klingon", "no_documents"))
+
+with quiet():
+    kweyol_cost_q = b.answer("how much will this appliance cost me to run monthly", index, verified,
+                              language="French Creole (Kwéyòl)")
+check("a Kwéyòl-language 'monthly cost' question gets the Kwéyòl template-rule reply, not English",
+      "Mwen ka estimé" in kweyol_cost_q["reply"] and "I can estimate" not in kweyol_cost_q["reply"],
+      kweyol_cost_q["reply"][:120])
+
+# FIXED (2026-08-18): pre-existing, language-independent bug caught while
+# writing the check above — finalize_reply() unconditionally rebuilt
+# "reply" from state["messages"][-1], but chatbot()'s 7 template-rule
+# branches set state["reply"] directly and never touch "messages", so
+# that node was always overwriting the real reply with a dressed-up echo
+# of the user's OWN question. This was broken in every language,
+# including English, since finalize_reply() was written — not something
+# translating the domain lane introduced. Regression guard: the reply
+# must be the actual template text, not the input question echoed back.
+with quiet():
+    english_cost_q = b.answer("how much will this appliance cost me to run monthly", index, verified,
+                               language="English")
+check("the English 'monthly cost' question ALSO gets the real template-rule reply, not an echo of itself",
+      "I can estimate the running cost" in english_cost_q["reply"] and
+      english_cost_q["reply"].strip() != "how much will this appliance cost me to run monthly 💛",
+      english_cost_q["reply"][:120])
+
+check("extractive_answer's 'no documents' wrapper is localized",
+      b.extractive_answer("zzz nonsense query matching nothing", [], language="French")
+      == "Cela ne figure pas dans mes documents LUCELEC.",
+      b.extractive_answer("zzz nonsense query matching nothing", [], language="French"))
+
+with quiet():
+    kweyol_hits = b.retrieve_chunks("how much does an AC cost to run", index, k=2)
+    kweyol_extractive = b.extractive_answer("how much does an AC cost to run", kweyol_hits,
+                                             language="French Creole (Kwéyòl)")
+check("extractive_answer's offline notice is localized when real hits exist",
+      "Mòd òfline" in kweyol_extractive,
+      kweyol_extractive[-160:])
+
+
+# =====================================================================
 section("RESULTS")
 # =====================================================================
 total = len(PASSES) + len(FAILS)

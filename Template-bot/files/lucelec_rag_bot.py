@@ -2382,16 +2382,25 @@ def summarize_chat_title(first_message: str) -> str:
     return _heuristic_chat_title(first_message)
 
 
-def extractive_answer(question: str, hits: list) -> str:
+def extractive_answer(question: str, hits: list, language: str = "English") -> str:
     """The emergency answer used when NO provider works.
 
     It just picks the sentences from the found chunks that share the most
     words with the question. It reads clumsily. That is deliberate: it is
     the baseline a real AI model has to beat, and it means a dead API key
     embarrasses you slightly instead of ending your demo.
+
+    FIXED: the two WRAPPER strings ("not in my documents" / the offline
+    notice) are localized via domain_template() — but the quoted sentences
+    themselves stay English, extracted verbatim from this app's English-
+    only source_documents/*.md. There's no document corpus in the other
+    three languages to extract FROM; translating retrieved text on the
+    fly would need a real translation call, not a template lookup, and is
+    out of scope here. Customers get a localized wrapper around an
+    English quote — an honest partial fix, not a silent full one.
     """
     if not hits:                                     # nothing was retrieved at all
-        return "That isn't in my LUCELEC documents."
+        return domain_template(language, "no_documents")
 
     q_terms = set(tokenize(question))                # the question's words, duplicates removed
     scored = []                                      # will hold (overlap, chunk number, sentence)
@@ -2409,10 +2418,10 @@ def extractive_answer(question: str, hits: list) -> str:
 
     scored.sort(key=lambda x: x[0], reverse=True)    # best overlap first
     if not scored:                                   # nothing matched well enough
-        return "That isn't in my LUCELEC documents."
+        return domain_template(language, "no_documents")
 
     lines = [f"{s} [{i}]" for _, i, s in scored[:3]] # take the top three, tag each with its chunk
-    return "\n\n".join(lines) + "\n\n_(Offline mode — no AI provider configured, so this is the retrieved text as-is.)_"
+    return "\n\n".join(lines) + "\n\n" + domain_template(language, "offline_notice")
 
 
 def safe_call(fn, *args, fallback: str = "") -> str:
@@ -2620,6 +2629,73 @@ SOCIAL_FALLBACKS = {                                 # language -> intent -> a s
         "chitchat":   "Mwen konprann. Ess ni an kesyon asou an aparèy oswa an bòdwo mwen kapab édé'w épi?",
     },
 }
+
+
+# FIXED: same class of bug and same fix shape as SOCIAL_FALLBACKS above —
+# chatbot()'s phrase-matched instant replies (appliance-cost/compare/
+# tariff/location "template-rule" answers) and extractive_answer()'s two
+# wrapper strings were English-only regardless of UI language, even
+# though these are the domain lane's OWN offline path (no LLM configured
+# in this dev env, so every real appliance/tariff question hits this).
+# The three payback/vampire-power/kwh-year replies keep numbers computed
+# and pre-formatted (e.g. f"{x:.1f}") BEFORE being substituted into the
+# template, so each language only needs to translate the surrounding
+# sentence, not duplicate every f-string's number-format spec.
+DOMAIN_TEMPLATE_REPLIES = {
+    "English": {
+        "appliance_cost_monthly": "I can estimate the running cost by using the appliance wattage and the hours it is used each day. If you share the appliance wattage and how many hours per day you use it, I can calculate the daily, monthly, and yearly cost for you.",
+        "compare_appliances": "I can compare two appliances by looking at their wattage and usage time. The lower-wattage option usually uses less energy, but the total cost also depends on how long it runs each day.",
+        "current_tariff": "I can help explain the current tariff structure for your customer category, but I should not invent a rate. If you need an exact rate, please confirm the latest LUCELEC tariff notice or contact LUCELEC directly.",
+        "southern_location": "For customers in the southern part of the island, LUCELEC maintains a service presence in Vieux Fort. That location is the main southern service location referred to in the local service information.",
+        "payback": "By switching to the 900W inverter model, you would reduce your daily use from {daily} kWh to {daily} kWh less per day. At the current effective rate, you would save about EC${monthly} per month. It would take about {months} months to recover the EC${price} purchase price through energy savings alone.",
+        "vampire_power": "Using your figures, the monthly consumption is about {fridge} kWh for the refrigerator, {bulbs} kWh for the LED bulbs, and {standby} kWh for standby use. That means standby or vampire power makes up about {pct}% of the total monthly usage in this example.",
+        "kwh_year": "If your label shows {annual} kWh/year, that is about {monthly_kwh} kWh per month. At the current effective rate, that works out to about EC${monthly_cost} per month.",
+        "no_documents": "That isn't in my LUCELEC documents.",
+        "offline_notice": "_(Offline mode — no AI provider configured, so this is the retrieved text as-is.)_",
+    },
+    "Spanish": {
+        "appliance_cost_monthly": "Puedo estimar el costo de funcionamiento usando la potencia del electrodoméstico y las horas que se usa cada día. Si me indica la potencia (vatios) y cuántas horas al día lo usa, puedo calcular el costo diario, mensual y anual.",
+        "compare_appliances": "Puedo comparar dos electrodomésticos observando su potencia y tiempo de uso. La opción de menor potencia generalmente consume menos energía, pero el costo total también depende de cuánto tiempo funciona cada día.",
+        "current_tariff": "Puedo ayudarle a explicar la estructura tarifaria actual para su categoría de cliente, pero no debo inventar una tarifa. Si necesita una tarifa exacta, confirme el último aviso de tarifas de LUCELEC o contacte directamente a LUCELEC.",
+        "southern_location": "Para los clientes en la parte sur de la isla, LUCELEC mantiene presencia de servicio en Vieux Fort. Esa ubicación es el principal punto de servicio del sur mencionado en la información local de servicio.",
+        "payback": "Al cambiar al modelo inverter de 900W, reduciría su uso diario de {daily} kWh a {daily} kWh menos por día. A la tarifa efectiva actual, ahorraría aproximadamente EC${monthly} al mes. Tomaría unos {months} meses recuperar el precio de compra de EC${price} solo con el ahorro de energía.",
+        "vampire_power": "Con sus cifras, el consumo mensual es de aproximadamente {fridge} kWh para el refrigerador, {bulbs} kWh para las bombillas LED, y {standby} kWh para el consumo en espera. Eso significa que el consumo fantasma representa aproximadamente el {pct}% del uso mensual total en este ejemplo.",
+        "kwh_year": "Si su etiqueta muestra {annual} kWh/año, eso es aproximadamente {monthly_kwh} kWh al mes. A la tarifa efectiva actual, eso equivale a unos EC${monthly_cost} al mes.",
+        "no_documents": "Eso no está en mis documentos de LUCELEC.",
+        "offline_notice": "_(Modo sin conexión — no hay proveedor de IA configurado, así que este es el texto recuperado tal cual.)_",
+    },
+    "French": {
+        "appliance_cost_monthly": "Je peux estimer le coût de fonctionnement à partir de la puissance de l'appareil et du nombre d'heures d'utilisation par jour. Si vous me donnez la puissance (watts) et le nombre d'heures par jour, je peux calculer le coût journalier, mensuel et annuel.",
+        "compare_appliances": "Je peux comparer deux appareils en fonction de leur puissance et de leur temps d'utilisation. L'option à puissance plus faible consomme généralement moins d'énergie, mais le coût total dépend aussi de la durée d'utilisation quotidienne.",
+        "current_tariff": "Je peux vous aider à expliquer la structure tarifaire actuelle pour votre catégorie de client, mais je ne dois pas inventer un tarif. Si vous avez besoin d'un tarif exact, veuillez confirmer le dernier avis tarifaire de LUCELEC ou contacter LUCELEC directement.",
+        "southern_location": "Pour les clients situés dans le sud de l'île, LUCELEC maintient une présence de service à Vieux Fort. Cet emplacement est le principal point de service du sud mentionné dans les informations de service local.",
+        "payback": "En passant au modèle inverter de 900W, vous réduiriez votre consommation quotidienne de {daily} kWh à {daily} kWh de moins par jour. Au tarif effectif actuel, vous économiseriez environ EC${monthly} par mois. Il faudrait environ {months} mois pour récupérer le prix d'achat de EC${price} uniquement grâce aux économies d'énergie.",
+        "vampire_power": "Avec vos chiffres, la consommation mensuelle est d'environ {fridge} kWh pour le réfrigérateur, {bulbs} kWh pour les ampoules LED, et {standby} kWh pour la veille. Cela signifie que la consommation fantôme représente environ {pct}% de l'utilisation mensuelle totale dans cet exemple.",
+        "kwh_year": "Si votre étiquette indique {annual} kWh/an, cela correspond à environ {monthly_kwh} kWh par mois. Au tarif effectif actuel, cela représente environ EC${monthly_cost} par mois.",
+        "no_documents": "Cela ne figure pas dans mes documents LUCELEC.",
+        "offline_notice": "_(Mode hors ligne — aucun fournisseur d'IA configuré, donc voici le texte récupéré tel quel.)_",
+    },
+    "French Creole (Kwéyòl)": {
+        "appliance_cost_monthly": "Mwen ka estimé pri fonksyònman an an itilizé wat aparèy la é konbyen lè i sèvi chak jou. Si ou di mwen wat aparèy la é konbyen lè pa jou ou sèvi'y, mwen ka kalkilé pri chak jou, chak mwa, é chak lanné.",
+        "compare_appliances": "Mwen ka konparé dé aparèy an gadé wat yo é tan yo sèvi. Aparèy ki ni pli piti wat la souvan sèvi mwens enèji, mé pri total la osi dépann asou konbyen tan i ka maché chak jou.",
+        "current_tariff": "Mwen ka édé eksplike estrikti tarif aktyèl pou kategori kliyan ou-a, mé mwen pa dwèt envanté an tarif. Si ou bizwen an tarif egzat, tanpri konfimé dènyè avi tarif LUCELEC-a oswa kontakté LUCELEC diréktèman.",
+        "southern_location": "Pou kliyan ki nan pati sid lil-la, LUCELEC ni an prézans sèvis Vieux Fort. Kote sa-a sé prensipal kote sèvis sid ki mansyoné nan enfòmasyon sèvis lokal-la.",
+        "payback": "Si ou chanjé pou modèl envèrtè 900W-la, ou ké rédwi itilizasyon chak jou'w di {daily} kWh a {daily} kWh mwens chak jou. Épi tarif aktyèl la, ou ké sové anviwon EC${monthly} chak mwa. I ké pran anviwon {months} mwa pou rékiperé pri acha EC${price} la sèlman épi ékonomi enèji.",
+        "vampire_power": "Épi chif ou-yo, konsòmasyon chak mwa a anviwon {fridge} kWh pou frijidè-a, {bulbs} kWh pou anpoul LED-yo, é {standby} kWh pou itilizasyon an atant. Sa vlé di kouran fantom-la reprézanté anviwon {pct}% di total itilizasyon chak mwa nan égzanp sa-a.",
+        "kwh_year": "Si étikèt ou-a montré {annual} kWh/lanné, sa vlé di anviwon {monthly_kwh} kWh chak mwa. Épi tarif aktyèl la, sa fè anviwon EC${monthly_cost} chak mwa.",
+        "no_documents": "Sa pa nan dokiman LUCELEC mwen yo.",
+        "offline_notice": "_(Mòd òfline — pa ni founisè AI konfiguré, alò sa sé tèks-la jan i yé nan dokiman-an.)_",
+    },
+}
+
+
+def domain_template(language: str, key: str, **kwargs) -> str:
+    """Same fallback-to-English pattern as t()/t_option(). Missing
+    interpolation kwargs would raise KeyError from .format() — every
+    call site below passes exactly what its template needs."""
+    templates = DOMAIN_TEMPLATE_REPLIES.get(language, DOMAIN_TEMPLATE_REPLIES["English"])
+    template = templates.get(key, DOMAIN_TEMPLATE_REPLIES["English"][key])
+    return template.format(**kwargs) if kwargs else template
 
 
 def social_intent_kind(message: str) -> str:
@@ -2893,20 +2969,21 @@ def node_art(state: GraphState):
 
 def chatbot(state: GraphState):
     """Central LLM agent reading RAG chunks, Excel knowledge, and prompt rules."""
-    user_msg = state["messages"][0].content 
+    user_msg = state["messages"][0].content
     low = user_msg.lower()
+    lang = state.get("language", "English")
 
     if any(phrase in low for phrase in ["how much will this appliance cost me to run monthly", "monthly electricity cost", "daily monthly yearly", "cost me to run monthly"]):
-        return {"reply": "I can estimate the running cost by using the appliance wattage and the hours it is used each day. If you share the appliance wattage and how many hours per day you use it, I can calculate the daily, monthly, and yearly cost for you.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+        return {"reply": domain_template(lang, "appliance_cost_monthly"), "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
 
     if any(phrase in low for phrase in ["difference in energy consumption", "difference between these two options", "compare these two", "which uses less energy", "energy consumption between"]):
-        return {"reply": "I can compare two appliances by looking at their wattage and usage time. The lower-wattage option usually uses less energy, but the total cost also depends on how long it runs each day.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+        return {"reply": domain_template(lang, "compare_appliances"), "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
 
     if any(phrase in low for phrase in ["current electricity rate", "current tariff", "what is the current electricity rate", "what is the current tariff"]):
-        return {"reply": "I can help explain the current tariff structure for your customer category, but I should not invent a rate. If you need an exact rate, please confirm the latest LUCELEC tariff notice or contact LUCELEC directly.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+        return {"reply": domain_template(lang, "current_tariff"), "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
 
     if any(phrase in low for phrase in ["primary southern service location", "southern part of the island", "vieux fort", "primary southern service location situated"]):
-        return {"reply": "For customers in the southern part of the island, LUCELEC maintains a service presence in Vieux Fort. That location is the main southern service location referred to in the local service information.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+        return {"reply": domain_template(lang, "southern_location"), "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
 
     if "pay back" in low or "months will it take" in low or "energy savings" in low:
         try:
@@ -2915,7 +2992,12 @@ def chatbot(state: GraphState):
             hours_per_day = 8.0
             price = 1500.0
             result = payback_with_surcharge(old_watts, new_watts, hours_per_day, price)
-            return {"reply": f"By switching to the 900W inverter model, you would reduce your daily use from {result['daily_saving_kwh']:.1f} kWh to {result['daily_saving_kwh']:.1f} kWh less per day. At the current effective rate, you would save about EC${result['monthly_saving']:.2f} per month. It would take about {result['months_to_payback']:.1f} months to recover the EC${price:.2f} purchase price through energy savings alone.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+            reply = domain_template(lang, "payback",
+                                     daily=f"{result['daily_saving_kwh']:.1f}",
+                                     monthly=f"{result['monthly_saving']:.2f}",
+                                     months=f"{result['months_to_payback']:.1f}",
+                                     price=f"{price:.2f}")
+            return {"reply": reply, "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
         except Exception:
             pass
 
@@ -2928,7 +3010,12 @@ def chatbot(state: GraphState):
             standby_watts = 20.0
             standby_hours = 20.0
             result = vampire_power_audit(fridge_kwh_year, led_bulbs, led_watts, led_hours, standby_watts, standby_hours)
-            return {"reply": f"Using your figures, the monthly consumption is about {result['fridge_monthly_kwh']:.2f} kWh for the refrigerator, {result['bulbs_monthly_kwh']:.2f} kWh for the LED bulbs, and {result['standby_monthly_kwh']:.2f} kWh for standby use. That means standby or vampire power makes up about {result['vampire_power_percentage']:.1f}% of the total monthly usage in this example.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+            reply = domain_template(lang, "vampire_power",
+                                     fridge=f"{result['fridge_monthly_kwh']:.2f}",
+                                     bulbs=f"{result['bulbs_monthly_kwh']:.2f}",
+                                     standby=f"{result['standby_monthly_kwh']:.2f}",
+                                     pct=f"{result['vampire_power_percentage']:.1f}")
+            return {"reply": reply, "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
         except Exception:
             pass
 
@@ -2936,7 +3023,11 @@ def chatbot(state: GraphState):
         try:
             annual_kwh = 360.0
             result = kwh_year_to_monthly_cost(annual_kwh)
-            return {"reply": f"If your label shows {annual_kwh:.0f} kWh/year, that is about {result['monthly_kwh']:.2f} kWh per month. At the current effective rate, that works out to about EC${result['monthly_cost']:.2f} per month.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+            reply = domain_template(lang, "kwh_year",
+                                     annual=f"{annual_kwh:.0f}",
+                                     monthly_kwh=f"{result['monthly_kwh']:.2f}",
+                                     monthly_cost=f"{result['monthly_cost']:.2f}")
+            return {"reply": reply, "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
         except Exception:
             pass
     
@@ -2979,7 +3070,7 @@ def chatbot(state: GraphState):
             errors.append(f"{provider}: {type(e).__name__}")
             continue
 
-    text = extractive_answer(safe_q, hits)
+    text = extractive_answer(safe_q, hits, language=lang)
     from langchain_core.messages import AIMessage
     return {"messages": [AIMessage(content=text)], "hits": hits, "provider": "offline (extractive)", "model": "-"}
 
@@ -3092,6 +3183,23 @@ tool_node = ToolNode([calculator_tool])
 
 def finalize_reply(state: GraphState):
     """Formats the LLM's final text using the Wardrobe."""
+    # FIXED: chatbot()'s 7 "template-rule" instant replies (appliance
+    # cost, compare, current tariff, southern location, payback, vampire
+    # power, kwh/year) set state["reply"] directly and never touch
+    # state["messages"] — but this node unconditionally rebuilt "reply"
+    # from state["messages"][-1] regardless, which for those branches was
+    # still the user's OWN original HumanMessage (chatbot() never
+    # replaced it with an AI message on that path). Net effect: every one
+    # of those 7 replies was silently discarded and replaced with a
+    # dressed-up echo of the user's own question — in every language,
+    # since this node was written. Caught while localizing these replies
+    # for Section 18's tests: the translated text was correct but never
+    # actually reached the customer. should_continue() still routes here
+    # for the tool-call check, so this node still needs to run either
+    # way — it just must not clobber an already-set reply.
+    if state.get("reply"):
+        return {}
+
     last_msg_content = state["messages"][-1].content
     
     # NEW FIX: Some LLMs return content as a list of blocks after a tool call.
