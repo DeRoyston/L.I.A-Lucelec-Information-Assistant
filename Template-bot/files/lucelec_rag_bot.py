@@ -2365,27 +2365,47 @@ def generate_elevenlabs_tts(text: str) -> bytes:
         return b""
 
 def generate_google_tts(text: str, language: str = "English") -> bytes:
-    """Generate spoken audio for free using Google TTS (gTTS)."""
+    """Generate spoken audio for free using Google TTS (gTTS).
+
+    gTTS hits an unofficial Google endpoint — the Translate website's own
+    internal RPC (`translate.google.<tld>/.../batchexecute`), not a real
+    published API — that actively 403s traffic it flags as automated.
+    Shared/datacenter IPs (any cloud host, not one host in particular)
+    get flagged far more than a home connection, which is why this can
+    work when run locally and fail once deployed. `tld` genuinely
+    changes which Google regional frontend serves the request, and each
+    one tracks its own abuse state independently — rotating through a
+    few is a real, commonly-successful workaround (not guaranteed;
+    Google can still block all of them), so it's tried before giving up
+    rather than failing on the first 403.
+    """
     if not text.strip():
         return b""
-        
-    try:
-        import io
-        from gtts import gTTS
-        
-        # Call the free Google endpoint
-        lang_code = LANG_CODES.get(language, "en")
-        tts = gTTS(text=text, lang=lang_code, slow=False)
-        
-        # Save the audio data in memory instead of writing an mp3 file to disk
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        
-        return fp.read()
-    except Exception as e:
-        print(f"Google TTS Error: {e}")
-        return b""
+
+    import io
+    from gtts import gTTS
+
+    lang_code = LANG_CODES.get(language, "en")
+    tlds_to_try = ["com", "co.uk", "ca", "com.au", "co.in"]
+    last_error = None
+
+    for tld in tlds_to_try:
+        try:
+            tts = gTTS(text=text, lang=lang_code, slow=False, tld=tld)
+
+            # Save the audio data in memory instead of writing an mp3 file to disk
+            fp = io.BytesIO()
+            tts.write_to_fp(fp)
+            fp.seek(0)
+            audio = fp.read()
+            if audio:
+                return audio
+        except Exception as e:
+            last_error = e
+            continue
+
+    print(f"Google TTS Error: all {len(tlds_to_try)} regional endpoints failed ({tlds_to_try}). Last error: {last_error}")
+    return b""
 
 def transcribe_voice_audio(audio_bytes: bytes) -> str:
     """Turn recorded voice audio into text using ElevenLabs Scribe STT."""
