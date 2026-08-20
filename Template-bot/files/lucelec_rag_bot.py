@@ -2335,8 +2335,21 @@ def render_voice_recorder() -> str:
     return ""
 
 
-def generate_elevenlabs_tts(text: str) -> bytes:
-    """Generate spoken audio from text using ElevenLabs Turbo v2.5."""
+def generate_elevenlabs_tts(text: str, language: str = "English") -> bytes:
+    """Generate spoken audio from text using ElevenLabs Turbo v2.5.
+
+    `eleven_turbo_v2_5` supports an explicit `language_code` hint instead
+    of relying purely on auto-detection from the text — useful since
+    French Creole (Kwéyòl) isn't one of ElevenLabs' trained languages in
+    any model (verified against their own docs, not assumed): the text
+    itself is genuine Kwéyòl vocabulary, not French, so this can't fix
+    pronunciation the way it would for an actual supported language —
+    but hinting "fr" (Kwéyòl is French-derived) gives ElevenLabs' model
+    its closest available reference point instead of leaving language
+    detection to guess from unfamiliar words, and keeps Kwéyòl on the
+    same reliable engine as everything else rather than being the one
+    case forced onto gTTS's separate online-reliability problem.
+    """
     import streamlit as st
 
     # Clean up any stray quotes or whitespace around the API key
@@ -2351,10 +2364,12 @@ def generate_elevenlabs_tts(text: str) -> bytes:
         from elevenlabs.client import ElevenLabs
         client = ElevenLabs(api_key=api_key)
 
+        lang_code = LANG_CODES.get(language, "en")
         audio_stream = client.text_to_speech.convert(
             text=text,
-            voice_id="JBFqnCBsd6RMkjVDRZzb", 
+            voice_id="JBFqnCBsd6RMkjVDRZzb",
             model_id="eleven_turbo_v2_5",
+            language_code=lang_code,
             output_format="mp3_44100_128"
         )
 
@@ -4179,7 +4194,6 @@ def streamlit_app():
             "staff_login_link": "LUCELEC staff? Log in here",
             "start_over_btn": "Start over", "sources_used": "Sources used",
             "retrieving_spinner": "Retrieving…", "generating_audio_spinner": "Generating audio...",
-            "kweyol_elevenlabs_caption": "ElevenLabs doesn't support Kwéyòl — using Google TTS for this reply instead.",
             "replay_audio_expander": "🔊 Replay audio",
             "mic_caption": "Use your browser microphone to dictate a question.",
             "captured_voice": "Captured voice: '{text}'",
@@ -4282,7 +4296,6 @@ def streamlit_app():
             "staff_login_link": "¿Personal de LUCELEC? Inicie sesión aquí",
             "start_over_btn": "Empezar de nuevo", "sources_used": "Fuentes utilizadas",
             "retrieving_spinner": "Buscando…", "generating_audio_spinner": "Generando audio...",
-            "kweyol_elevenlabs_caption": "ElevenLabs no admite Kwéyòl — usando Google TTS para esta respuesta.",
             "replay_audio_expander": "🔊 Reproducir audio",
             "mic_caption": "Use el micrófono de su navegador para dictar una pregunta.",
             "captured_voice": "Voz capturada: '{text}'",
@@ -4386,7 +4399,6 @@ def streamlit_app():
             "staff_login_link": "Personnel de LUCELEC ? Connectez-vous ici",
             "start_over_btn": "Recommencer", "sources_used": "Sources utilisées",
             "retrieving_spinner": "Recherche…", "generating_audio_spinner": "Génération de l'audio...",
-            "kweyol_elevenlabs_caption": "ElevenLabs ne prend pas en charge le Kwéyòl — utilisation de Google TTS pour cette réponse.",
             "replay_audio_expander": "🔊 Réécouter l'audio",
             "mic_caption": "Utilisez le microphone de votre navigateur pour dicter une question.",
             "captured_voice": "Voix capturée : « {text} »",
@@ -4489,7 +4501,6 @@ def streamlit_app():
             "staff_login_link": "Ou se anplwaye LUCELEC? Konekte isit la",
             "start_over_btn": "Rekòmanse", "sources_used": "Sous yo itilize",
             "retrieving_spinner": "K ap chèché…", "generating_audio_spinner": "K ap fè odyo...",
-            "kweyol_elevenlabs_caption": "ElevenLabs pa sipòte Kwéyòl — n ap sèvi Google TTS pou repons sa a.",
             "replay_audio_expander": "🔊 Rekoute odyo",
             "mic_caption": "Sèvi ak mikwo navigatè ou pou dikte yon kesyon.",
             "captured_voice": "Vwa kaptire: '{text}'",
@@ -5197,21 +5208,25 @@ def streamlit_app():
                         with st.spinner(t("generating_audio_spinner")):
                             engine = st.session_state.accessibility_settings.get("tts_engine", "ElevenLabs (Credits)")
 
-                            # ElevenLabs has no French Creole (Kwéyòl) support — it
-                            # is not one of its listed languages — so feeding it
-                            # Kwéyòl text produces mispronounced/garbled audio.
-                            # Route to gTTS's "fr" voice instead (see LANG_CODES —
-                            # "ht" isn't a valid gTTS language code and raised
-                            # ValueError, silently producing no audio at all).
-                            # Force that route regardless of the engine picked,
-                            # so the failure mode is "French accent on Kwéyòl
-                            # words" instead of "wrong language entirely" or
-                            # dead silence.
-                            if engine == "ElevenLabs (Credits)" and sim_language == "French Creole (Kwéyòl)":
-                                st.caption(t("kweyol_elevenlabs_caption"))
-                                audio_data = generate_google_tts(out["reply"], language=sim_language)
-                            elif engine == "ElevenLabs (Credits)":
-                                audio_data = generate_elevenlabs_tts(out["reply"])
+                            # ElevenLabs has no French Creole (Kwéyòl) support in
+                            # any of its models (verified against ElevenLabs' own
+                            # docs, including the newer 74-language v3 model —
+                            # still not listed). Kwéyòl replies used to be forced
+                            # onto gTTS instead, which works but ties Kwéyòl
+                            # specifically to gTTS's separate online-reliability
+                            # problem (see generate_google_tts()'s docstring) even
+                            # when ElevenLabs is the chosen engine. Kwéyòl is
+                            # heavily French-derived, so ElevenLabs now gets a
+                            # shot at it too — its own generate_elevenlabs_tts()
+                            # passes a "fr" language_code hint (LANG_CODES maps
+                            # Kwéyòl -> "fr" already, same approximation gTTS
+                            # uses) instead of leaving language detection to
+                            # guess from vocabulary it wasn't trained on. Not a
+                            # real fix — the text is still genuine Kwéyòl words,
+                            # not French — but keeps Kwéyòl on the same engine as
+                            # everything else rather than singling it out.
+                            if engine == "ElevenLabs (Credits)":
+                                audio_data = generate_elevenlabs_tts(out["reply"], language=sim_language)
                             else:
                                 # FIXED: Passes sim_language to gTTS
                                 audio_data = generate_google_tts(out["reply"], language=sim_language)

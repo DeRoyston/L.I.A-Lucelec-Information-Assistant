@@ -583,9 +583,14 @@ check("every source-excerpt caption escapes dollar signs",
 check("chat history still stores the raw (unescaped) reply text",
       '{"role": "assistant", "content": out["reply"], "hits": out["hits"]}' in app_source,
       "history storage line changed shape — TTS/history must keep the raw reply")
+# generate_elevenlabs_tts() gained a `language` param (2026-08-20) so Kwéyòl
+# can get a "fr" language_code hint instead of being forced onto gTTS —
+# the call site now passes language=sim_language too, so the exact-call
+# match below only checks the part that must never change: out["reply"]
+# staying the raw, unescaped first argument, not that no other arg exists.
 check("TTS still receives the raw (unescaped) reply text",
       "generate_google_tts(out[\"reply\"]" in app_source
-      and "generate_elevenlabs_tts(out[\"reply\"])" in app_source,
+      and "generate_elevenlabs_tts(out[\"reply\"]" in app_source,
       "TTS call sites must keep passing the raw, unescaped out[\"reply\"]")
 
 # Regression guard: the dark mode toggle must NOT bind directly to
