@@ -539,6 +539,31 @@ div[data-testid="stHorizontalBlock"]:has([data-testid="stChatInput"]) {
     .lucelec-harvest-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .lucelec-harvest-section-head { display: block; }
     .lucelec-harvest-section-count { display: block; margin-top: 0.2rem; }
+
+    /* Streamlit's own responsive CSS stacks any st.columns() row into
+       full-width rows below its breakpoint — right for most layouts here
+       (e.g. the cost calculator's two appliance columns genuinely read
+       better stacked on a phone), wrong for the chat +/input/mic row,
+       which left the mic button alone on a full-width row under the text
+       box. `.st-key-chat_input_row` scopes this override to just that
+       one row (see its st.container(key=...) call site) instead of
+       fighting Streamlit's stacking everywhere. */
+    .st-key-chat_input_row [data-testid="stHorizontalBlock"] {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 0.4rem !important;
+    }
+    .st-key-chat_input_row [data-testid="stColumn"] {
+        width: unset !important;
+        min-width: 0 !important;
+    }
+
+    /* The chat history box was a fixed 480px regardless of viewport —
+       on a ~700-900px-tall phone screen that pushes the input row for a
+       brand-new conversation (nothing to scroll yet) below the fold. */
+    .st-key-chat_history {
+        height: min(480px, 45vh) !important;
+    }
 }
 """
 
@@ -4534,11 +4559,20 @@ def streamlit_app():
         background-color: #5DADE2; padding: 1.5rem 1rem; border-radius: 10px;
         display: flex; justify-content: center; align-items: center; gap: 1.5rem; margin-bottom: 2rem;
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); border: 2px solid #3498DB;
+        flex-wrap: wrap;
     }}
-    .lucelec-logo {{ height: 110px; width: auto; mix-blend-mode: multiply; }}
-    .lucelec-text-container {{ display: flex; flex-direction: column; justify-content: center; text-align: left; }}
-    .lucelec-title {{ font-size: 4rem; font-weight: 900; font-family: 'Arial Black', sans-serif; color: #F7DC6F !important; text-shadow: 3px 3px 0px #2C3E50; margin: 0; line-height: 1.1; letter-spacing: 2px; }}
-    .lucelec-subtitle {{ font-size: 1.6rem; font-weight: 800; font-family: 'Arial Black', sans-serif; color: #1A5276 !important; margin: 0; letter-spacing: 1px; }}
+    /* clamp() scales fluidly with viewport width instead of needing a
+       breakpoint — at narrow widths (e.g. a 390px phone) the fixed 4rem
+       title used to force "LUCELEC" to break mid-word ("LUCE"/"LEC")
+       because its own text-container had nowhere near enough room next
+       to the 110px logo. overflow-wrap/word-break are pinned to `normal`
+       as a second line of defense: even if some future change makes the
+       clamped size still too wide for a given width, the browser will
+       overflow rather than silently mangle the word again. */
+    .lucelec-logo {{ height: clamp(64px, 20vw, 110px); width: auto; mix-blend-mode: multiply; }}
+    .lucelec-text-container {{ display: flex; flex-direction: column; justify-content: center; text-align: left; min-width: 0; }}
+    .lucelec-title {{ font-size: clamp(1.9rem, 9vw, 4rem); font-weight: 900; font-family: 'Arial Black', sans-serif; color: #F7DC6F !important; text-shadow: 3px 3px 0px #2C3E50; margin: 0; line-height: 1.1; letter-spacing: 2px; overflow-wrap: normal; word-break: normal; }}
+    .lucelec-subtitle {{ font-size: clamp(0.85rem, 3.4vw, 1.6rem); font-weight: 800; font-family: 'Arial Black', sans-serif; color: #1A5276 !important; margin: 0; letter-spacing: 1px; overflow-wrap: normal; word-break: normal; }}
     </style>
     <div class="lucelec-banner">
         {img_html}
@@ -4900,8 +4934,8 @@ def streamlit_app():
                 if a11y_state["tts"]:
                     a11y_state["tts_engine"] = st.radio(
                         t("tts_engine_label"),
-                        ["Google (Free)", "ElevenLabs (Credits)"],
-                        index=0 if a11y_state.get("tts_engine", "Google (Free)") == "Google (Free)" else 1
+                        ["ElevenLabs (Credits)", "Google (Free)"],
+                        index=0 if a11y_state.get("tts_engine", "ElevenLabs (Credits)") == "ElevenLabs (Credits)" else 1
                     )
 
                 a11y_state["stt"] = st.checkbox(t("stt_checkbox"), value=a11y_state.get("stt", False))
@@ -5061,7 +5095,7 @@ def streamlit_app():
         # row below (created later in this function). Scrolling through
         # past messages no longer drags the input/mic/upload row along
         # with it; that row stays put right under this box.
-        chat_container = st.container(height=480)
+        chat_container = st.container(height=480, key="chat_history")
         with chat_container:
             for m in st.session_state.messages:
                 msg_avatar = bot_avatar if m["role"] == "assistant" else None
@@ -5141,7 +5175,7 @@ def streamlit_app():
                     # --- UPDATED: TTS Generation with Engine Router ---
                     if st.session_state.accessibility_settings.get("tts"):
                         with st.spinner(t("generating_audio_spinner")):
-                            engine = st.session_state.accessibility_settings.get("tts_engine", "Google (Free)")
+                            engine = st.session_state.accessibility_settings.get("tts_engine", "ElevenLabs (Credits)")
 
                             # ElevenLabs has no French Creole (Kwéyòl) support — it
                             # is not one of its listed languages — so feeding it
@@ -5223,7 +5257,17 @@ def streamlit_app():
             elif not voice_transcript:
                 st.info(t("mic_not_captured"))
 
-        col_add, col_input, col_mic = st.columns([1, 8, 1])
+        # Streamlit's own responsive CSS stacks a 3-column st.columns() row
+        # into 3 full-width rows below ~640px viewport width — fine for
+        # most layouts, but here it left the mic button alone on its own
+        # full-width row under the input box, wasting most of a phone
+        # screen's width. A keyed container gives this specific row a
+        # stable CSS hook (`.st-key-chat_input_row`) to force it back to a
+        # single compact row on mobile without touching Streamlit's
+        # stacking behavior anywhere else (e.g. the cost calculator's
+        # appliance-A/B columns still want to stack on mobile).
+        with st.container(key="chat_input_row"):
+            col_add, col_input, col_mic = st.columns([1, 8, 1])
         with col_add:
             with st.popover("➕", help="Upload Excel, PDF, or TXT files"):
                 handle_combined_file_uploads()
@@ -5232,7 +5276,19 @@ def streamlit_app():
                 process_chat_message(q)
 
         def toggle_voice_widget():
-            st.session_state.show_voice_widget = not st.session_state.get("show_voice_widget", False)
+            opening = not st.session_state.get("show_voice_widget", False)
+            st.session_state.show_voice_widget = opening
+            if opening:
+                # last_voice_transcript only exists to stop Streamlit
+                # re-delivering the SAME captured value across reruns while
+                # this widget stays open (see the guard below). It was never
+                # reset between sessions, so a second, genuinely new voice
+                # capture that happens to transcribe to the same text as an
+                # earlier one (e.g. saying "hello" twice) got silently
+                # treated as a stale duplicate and dropped — no message, no
+                # error. Starting each new session with a clean slate fixes
+                # that without weakening the within-session guard it exists for.
+                st.session_state.last_voice_transcript = ""
 
         with col_mic:
             st.button("🎙️", on_click=toggle_voice_widget, use_container_width=True)
