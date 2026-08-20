@@ -1,5 +1,5 @@
 # ── Core: the app will not run without these ──────────────────────────
-streamlit>=1.36
+streamlit>=1.38.0
 
 # The bot now routes every AI call through LangGraph, so these are REQUIRED,
 # not optional. LangGraph builds the guardrail → router → A.R.T. → chatbot
@@ -12,6 +12,9 @@ langchain-groq>=0.2            # Groq
 
 # Still used directly by the web-harvest and offline paths.
 openai>=1.40
+
+# ── Voice / Audio ─────────────────────────────────────────────────────
+elevenlabs>=1.0.0
 
 # ── Web harvesting (needed if you use the Web harvest tab) ────────────
 beautifulsoup4>=4.12           # much better HTML-to-text than the built-in fallback
