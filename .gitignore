@@ -26,3 +26,7 @@ pending_review/
 
 # ── One-off local backups, not source ──
 *.zip
+
+# ── Superpowers skill working state (plans/specs, not source) ──
+docs/superpowers/
+**/docs/superpowers/
