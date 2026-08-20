@@ -301,6 +301,21 @@ code {
 }
 [data-testid="stMainMenuPopover"] * { color: #fafafa !important; }
 [data-testid^="stMainMenuItem"]:hover { background-color: #2a2f3a !important; }
+
+
+/* Refreshed Web Harvest and Sources surfaces in dark mode. */
+.lucelec-harvest-hero { background: linear-gradient(135deg, #172b3b 0%, #1e222b 100%) !important; border-color: #31536d !important; }
+.lucelec-harvest-kicker, .lucelec-harvest-scope { color: #85c1e9 !important; }
+.lucelec-harvest-hero h2, .lucelec-harvest-section-head h3, .lucelec-harvest-metric-value,
+.lucelec-harvest-guidance strong, .lucelec-harvest-empty strong, .lucelec-harvest-item-title,
+.lucelec-source-result-source { color: #d6ecff !important; }
+.lucelec-harvest-description, .lucelec-harvest-caption, .lucelec-harvest-card-caption,
+.lucelec-harvest-guidance p, .lucelec-harvest-empty p, .lucelec-harvest-section-count,
+.lucelec-harvest-item-meta, .lucelec-source-result-text { color: #b6c4d1 !important; }
+.lucelec-harvest-metric, .lucelec-harvest-url-panel, .lucelec-source-test-panel,
+.lucelec-harvest-guidance, .lucelec-harvest-empty, .lucelec-source-result { background: #1e222b !important; border-color: #3a5266 !important; }
+.lucelec-harvest-metric-label, .lucelec-source-result-score { color: #85c1e9 !important; }
+.lucelec-harvest-url { background: #182d3d !important; border-left-color: #5dade2 !important; color: #d6ecff !important; }
 """
 
 POLISH_CSS = """
@@ -355,6 +370,175 @@ div[data-testid="stHorizontalBlock"]:has([data-testid="stChatInput"]) {
 }
 [data-testid="stSidebar"] button {
     border: 1px solid #d0d5db;
+}
+
+
+/* Refreshed Web Harvest and Sources surfaces. */
+.lucelec-harvest-hero {
+    background: linear-gradient(135deg, #eef7ff 0%, #f8fbff 100%);
+    border: 1px solid #c7def2;
+    border-radius: 14px;
+    padding: 1.15rem 1.25rem;
+    margin: 0.25rem 0 1rem;
+}
+.lucelec-harvest-kicker {
+    color: #2874a6;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+}
+.lucelec-harvest-hero h2 {
+    color: #1b4f72;
+    margin: 0;
+}
+.lucelec-harvest-description {
+    color: #415466;
+    margin: 0.45rem 0 0;
+    max-width: 58rem;
+}
+.lucelec-harvest-scope {
+    color: #2874a6;
+    font-size: 0.86rem;
+    font-weight: 700;
+    margin-top: 0.8rem;
+}
+.lucelec-harvest-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.7rem;
+    margin: 0.85rem 0 0.65rem;
+}
+.lucelec-harvest-metric {
+    background: #ffffff;
+    border: 1px solid #d7e5f0;
+    border-radius: 10px;
+    padding: 0.8rem 0.9rem;
+    min-width: 0;
+}
+.lucelec-harvest-metric-label {
+    color: #607487;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.lucelec-harvest-metric-value {
+    color: #1b4f72;
+    font-size: 1.45rem;
+    font-weight: 800;
+    margin-top: 0.25rem;
+    overflow-wrap: anywhere;
+}
+.lucelec-harvest-caption,
+.lucelec-harvest-card-caption {
+    color: #607487;
+    font-size: 0.86rem;
+}
+.lucelec-harvest-url-panel,
+.lucelec-source-test-panel {
+    background: #f7fafd;
+    border: 1px solid #d7e5f0;
+    border-radius: 12px;
+    padding: 0.85rem 1rem 0.2rem;
+    margin: 0.7rem 0 1rem;
+}
+.lucelec-harvest-guidance,
+.lucelec-harvest-empty {
+    background: #f8fbff;
+    border: 1px dashed #b8d1e5;
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    margin: 0.8rem 0 1rem;
+}
+.lucelec-harvest-guidance strong,
+.lucelec-harvest-empty strong {
+    color: #1b4f72;
+}
+.lucelec-harvest-guidance p,
+.lucelec-harvest-empty p {
+    color: #526575;
+    margin: 0.25rem 0 0;
+}
+.lucelec-harvest-section-head {
+    align-items: baseline;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+    margin: 1.1rem 0 0.25rem;
+}
+.lucelec-harvest-section-head h3 {
+    color: #1b4f72;
+    margin: 0;
+}
+.lucelec-harvest-section-count {
+    color: #607487;
+    font-size: 0.86rem;
+    white-space: nowrap;
+}
+.lucelec-harvest-item {
+    padding: 0.1rem 0 0.35rem;
+}
+.lucelec-harvest-item-title {
+    color: #1b4f72;
+    font-size: 1rem;
+    font-weight: 800;
+    margin-bottom: 0.3rem;
+    overflow-wrap: anywhere;
+}
+.lucelec-harvest-item-meta {
+    color: #607487;
+    font-size: 0.82rem;
+    margin-bottom: 0.45rem;
+}
+.lucelec-harvest-url {
+    background: #eef5fb;
+    border-left: 3px solid #5dade2;
+    border-radius: 5px;
+    color: #28536f;
+    font-family: monospace;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    padding: 0.45rem 0.6rem;
+    word-break: break-word;
+}
+.lucelec-source-result {
+    background: #f8fbff;
+    border: 1px solid #d7e5f0;
+    border-radius: 10px;
+    margin: 0.65rem 0;
+    padding: 0.75rem 0.9rem;
+}
+.lucelec-source-result-head {
+    align-items: baseline;
+    display: flex;
+    gap: 0.6rem;
+    justify-content: space-between;
+    margin-bottom: 0.45rem;
+}
+.lucelec-source-result-source {
+    color: #1b4f72;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+.lucelec-source-result-score {
+    color: #2874a6;
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.lucelec-source-result-text {
+    color: #415466;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+    .lucelec-harvest-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .lucelec-harvest-section-head { display: block; }
+    .lucelec-harvest-section-count { display: block; margin-top: 0.2rem; }
 }
 """
 
@@ -1078,6 +1262,31 @@ def check_register(user: dict, message: str) -> Optional[str]:
 def check_territory(user: dict) -> Optional[dict]:
     """Axis 3 — The Map & Rulebook. Returns the segment's rules, or None to escalate."""
     return get_location_context(user.get("segment"))     # None if we do not know the segment
+
+
+# Words a person actually types when asked "which kind of customer are you?"
+# — LOCATION_CONTEXT's own keys are the formal category names, not everyday
+# language, so a typed "domestic" or "hotel" needs a plain-language alias
+# table the same way check_register() reads mood off the message itself.
+TERRITORY_ALIASES = {
+    "Domestic":                   ["domestic", "residential", "household", "home", "homeowner"],
+    "Commercial":                 ["commercial", "business", "shop", "office", "store"],
+    "Industrial":                 ["industrial", "factory", "plant", "manufacturing"],
+    "Hotel / Tourism":            ["hotel", "tourism", "tourist", "resort", "guesthouse"],
+    "Government / Public Sector": ["government", "public sector", "public institution"],
+    "Agricultural":               ["agricultural", "agriculture", "farm", "agro"],
+}
+
+
+def detect_territory(message: str) -> Optional[str]:
+    """Reads a free-text answer to the territory question and matches it to
+    a real LOCATION_CONTEXT key, so typing "domestic" in chat works the same
+    as picking it from the sidebar dropdown."""
+    low = message.lower()
+    for segment, aliases in TERRITORY_ALIASES.items():
+        if any(alias in low for alias in aliases):
+            return segment
+    return None
 
 
 def _english_list(items: list) -> str:
@@ -1979,7 +2188,7 @@ PROVIDERS = {
     "groq": {                                        
         "label":     "Groq",
         "key_env":   "GROQ_API_KEY",                 
-        "model":     "llama-3.3-70b-versatile", # Highly optimized for tool calling   
+        "model":     "openai/gpt-oss-120b", # llama-3.3-70b-versatile was retired by Groq (404 model_not_found) — this is the largest tool-capable model left on the account
         "model_env": "GROQ_MODEL",
         "needs_key": True,
         "get_key":   "https://console.groq.com/keys",
@@ -2467,7 +2676,9 @@ def safe_call(fn, *args, fallback: str = "") -> str:
 #   message containing both would always be treated as a plain greeting.
 SOCIAL_SIGNALS = {
     "identity":   ["who are you", "what are you", "your name", "are you a robot",
-                   "are you human", "are you real", "are you a person"],
+                   "are you human", "are you real", "are you a person",
+                   "lia stand", "lia mean", "does lia", "l.i.a", "what is lia",
+                   "who is lia", "lia"],
     "capability": ["what can you do", "what do you do", "how can you help",
                    "what can you help", "can you help", "what is this",
                    "i need help", "i need your help", "help me", "help"],
@@ -2553,6 +2764,8 @@ def classify_intent(message: str) -> str:
 # The instructions for the social lane. Notice what is missing: any document.
 # The AI is being asked to be a person, not a source.
 SOCIAL_PROMPT = """You are {bot_name}, the assistant for {client}.
+{bot_name} stands for LUCELEC Information Assistant — say so if asked what
+your name means or stands for.
 You are talking to {persona_name}, who {persona_who}.
 
 Right now the person is making small talk — a greeting, a thank you, a goodbye,
@@ -2582,8 +2795,9 @@ SOCIAL_FALLBACKS = {                                 # language -> intent -> a s
         "thanks":     "You're very welcome. Anything else you'd like to work out?",
         "farewell":   "Take care. Come back any time you need to check a running cost.",
         "howareyou":  "I'm well, thank you for asking. What can I help you with today?",
-        "identity":   "I'm {bot_name}, a computer assistant built for {client} — "
-                      "not a person. I can help you compare what appliances cost to run.",
+        "identity":   "I'm {bot_name} — short for LUCELEC Information Assistant — "
+                      "a computer assistant built for {client}, not a person. "
+                      "I can help you compare what appliances cost to run.",
         "capability": "I can work out what an appliance costs to run per month or per "
                       "year, compare two appliances before you buy, and explain the "
                       "words on your bill in plain language.",
@@ -2595,8 +2809,9 @@ SOCIAL_FALLBACKS = {                                 # language -> intent -> a s
         "thanks":     "Con mucho gusto. ¿Hay algo más que le gustaría calcular?",
         "farewell":   "Cuídese. Vuelva cuando necesite calcular un costo de consumo.",
         "howareyou":  "Estoy bien, gracias por preguntar. ¿En qué puedo ayudarle hoy?",
-        "identity":   "Soy {bot_name}, un asistente informático creado para {client} — "
-                      "no soy una persona. Puedo ayudarle a comparar el costo de sus electrodomésticos.",
+        "identity":   "Soy {bot_name} — la sigla de LUCELEC Information Assistant — "
+                      "un asistente informático creado para {client}, no soy una persona. "
+                      "Puedo ayudarle a comparar el costo de sus electrodomésticos.",
         "capability": "Puedo calcular cuánto cuesta usar un electrodoméstico al mes o al año, "
                       "comparar dos electrodomésticos antes de comprar, y explicarle "
                       "los términos de su factura en lenguaje sencillo.",
@@ -2608,8 +2823,9 @@ SOCIAL_FALLBACKS = {                                 # language -> intent -> a s
         "thanks":     "Avec plaisir. Y a-t-il autre chose que vous aimeriez calculer ?",
         "farewell":   "Prenez soin de vous. Revenez quand vous voulez vérifier un coût de fonctionnement.",
         "howareyou":  "Je vais bien, merci de demander. Comment puis-je vous aider aujourd'hui ?",
-        "identity":   "Je suis {bot_name}, un assistant informatique conçu pour {client} — "
-                      "pas une personne. Je peux vous aider à comparer le coût de vos appareils.",
+        "identity":   "Je suis {bot_name} — l'abréviation de LUCELEC Information Assistant — "
+                      "un assistant informatique conçu pour {client}, pas une personne. "
+                      "Je peux vous aider à comparer le coût de vos appareils.",
         "capability": "Je peux calculer le coût d'utilisation d'un appareil par mois ou par "
                       "an, comparer deux appareils avant l'achat, et expliquer "
                       "les termes de votre facture en langage simple.",
@@ -2621,8 +2837,9 @@ SOCIAL_FALLBACKS = {                                 # language -> intent -> a s
         "thanks":     "Padkwa. Ni lòt biten ou vlé kalkilé?",
         "farewell":   "Pran swen'w. Vini tounen chak fwa ou bizwen chèké yon pri fonksyònman.",
         "howareyou":  "Mwen byen, mèsi pou'w mandé. Ki sa mwen kapab édé'w épi jodi-a?",
-        "identity":   "Mwen sé {bot_name}, an asistan òdinatè ki fèt pou {client} — "
-                      "mwen pa an moun. Mwen ka édé'w konparé pri aparèy.",
+        "identity":   "Mwen sé {bot_name} — ki vlé di LUCELEC Information Assistant — "
+                      "an asistan òdinatè ki fèt pou {client}, mwen pa an moun. "
+                      "Mwen ka édé'w konparé pri aparèy.",
         "capability": "Mwen ka kalkilé konbyen sa kouté pou fè maché yon aparèy chak mwa oswa chak "
                       "lanné, konparé dé aparèy avan ou achté, é eksplike'w "
                       "mo asou bòdwo'w an lang senp.",
@@ -2896,6 +3113,10 @@ def calculator_tool(watts: float, hours_per_day: float) -> str:
 
 class GraphState(TypedDict):
     messages: Annotated[list, add_messages]
+    current_question: str # THIS turn's raw input — see classify_and_route()'s
+                           # history param. chatbot() reads this instead of
+                           # messages[0], which stops being "this turn's
+                           # question" the moment prior turns are prepended.
     user: dict
     index: dict
     excel_data: list # <--- MUST BE HERE
@@ -2925,10 +3146,18 @@ def node_guardrail(state: GraphState):
     return {"escalated": False, "axis": "-"} 
 
 def node_router(state: GraphState):
-    """Determines the lane (social or domain) and the emotional register."""
+    """Determines the lane (social or domain) and the emotional register.
+
+    The Pod's chosen mood only sticks on the domain lane — someone set up
+    as "anxious" for their bill shouldn't have that voice bleed into a
+    plain "hi" or other small talk. Social lane still reads the message
+    itself for a register (bereaved/urgent/formal keywords), it just
+    ignores the sticky user["mood"] override.
+    """
     user_msg = state["messages"][-1].content
-    r = check_register(state["user"], user_msg)
     intent = classify_intent(user_msg)
+    register_user = state["user"] if intent == "domain" else {**state["user"], "mood": None}
+    r = check_register(register_user, user_msg)
     return {"register": r or DEFAULT_REGISTER, "intent": intent}
 
 def node_social(state: GraphState):
@@ -2954,22 +3183,50 @@ def node_art(state: GraphState):
     """Checks Authority and Territory for domain questions."""
     user_msg = state["messages"][-1].content
     
-    a = check_authority(state["user"], user_msg) 
-    t = check_territory(state["user"]) 
-    
-    if not a: 
-        why = "authority" if state["user"].get("id_verified") else "authority_unverified" 
+    a = check_authority(state["user"], user_msg)
+    t = check_territory(state["user"])
+
+    if not a:
+        why = "authority" if state["user"].get("id_verified") else "authority_unverified"
         return {"reply": escalate_message(why, state["user"]), "escalated": True,
-                "axis": why, "provider": "A.R.T.", "model": "-"} 
-    if not t: 
-        return {"reply": escalate_message("territory", state["user"]), "escalated": True,
-                "axis": "territory", "provider": "A.R.T.", "model": "-"} 
-        
-    return {"territory": t, "escalated": False, "axis": "-"} 
+                "axis": why, "provider": "A.R.T.", "model": "-"}
+    if not t:
+        # The customer may be answering the territory question right now
+        # (e.g. typed "domestic") rather than asking a new one. Recognize
+        # that reply, save it so the sidebar/session stop asking again, and
+        # let this turn proceed instead of re-escalating on the same axis.
+        detected = detect_territory(user_msg)
+        if detected:
+            import streamlit as st
+            st.session_state["identity_territory"] = detected
+            # Two things that DON'T work here, both confirmed by hand:
+            #  1. Writing "identity_territory__widget" directly raises
+            #     StreamlitAPIException — the Settings sidebar (and its
+            #     selectbox, same key) already rendered earlier THIS run,
+            #     before chat processing reaches this node, so Streamlit
+            #     treats the widget as already instantiated for this pass.
+            #  2. Popping that key and letting sticky_selectbox recompute
+            #     `index` next rerun updates st.session_state correctly
+            #     (verified via debug readout) but the BaseWeb Select's
+            #     on-screen label still silently shows the stale option —
+            #     a known Streamlit/BaseWeb quirk where a reused widget
+            #     `key` doesn't force the frontend to redraw on an
+            #     `index`-only change.
+            # Bumping a nonce into the widget's key forces a genuine
+            # remount (new key = new DOM element = fresh paint), which is
+            # the standard workaround for that quirk.
+            st.session_state["identity_territory_nonce"] = \
+                st.session_state.get("identity_territory_nonce", 0) + 1
+            t = get_location_context(detected)
+        else:
+            return {"reply": escalate_message("territory", state["user"]), "escalated": True,
+                    "axis": "territory", "provider": "A.R.T.", "model": "-"}
+
+    return {"territory": t, "escalated": False, "axis": "-"}
 
 def chatbot(state: GraphState):
     """Central LLM agent reading RAG chunks, Excel knowledge, and prompt rules."""
-    user_msg = state["messages"][0].content
+    user_msg = state["current_question"]
     low = user_msg.lower()
     lang = state.get("language", "English")
 
@@ -3274,9 +3531,18 @@ bot_app = workflow.compile()
 # --- EXECUTION BINDING ---
 
 def classify_and_route(user: dict, message: str, index: dict, excel_data: list = None, language: str = "English",
-                        persona_name: Optional[str] = None, persona_who: Optional[str] = None) -> dict:
+                        persona_name: Optional[str] = None, persona_who: Optional[str] = None,
+                        history: Optional[list] = None) -> dict:
+    """`history` is prior turns as LangChain messages (oldest first), NOT
+    including the current `message` — see build_history_messages(). Without
+    it, every turn is stateless: the bot could ask "confirm your rate?",
+    the customer could answer "$3 per unit", and chatbot() would have no
+    idea a question was ever asked — it just re-runs RAG on "$3 per unit"
+    as if it were a brand new, context-free question and dead-ends with
+    "that isn't in my documents." (Caught live — see git history.)"""
     initial_state = {
-        "messages": [HumanMessage(content=message)],
+        "messages": (history or []) + [HumanMessage(content=message)],
+        "current_question": message,
         "user": user,
         "index": index,
         "excel_data": excel_data or [],
@@ -3309,9 +3575,37 @@ def classify_and_route(user: dict, message: str, index: dict, excel_data: list =
     }
 
 def answer(question: str, index: dict, user: Optional[dict] = None, excel_data: list = None, language: str = "English",
-           persona_name: Optional[str] = None, persona_who: Optional[str] = None) -> dict:
+           persona_name: Optional[str] = None, persona_who: Optional[str] = None,
+           history: Optional[list] = None) -> dict:
     user = user or {"id_verified": True, "mood": DEFAULT_REGISTER, "segment": "Domestic"}
-    return classify_and_route(user, question, index, excel_data, language, persona_name, persona_who)
+    return classify_and_route(user, question, index, excel_data, language, persona_name, persona_who, history)
+
+
+HISTORY_TURNS = 6   # exchanges (user+assistant pairs) of prior context fed to the LLM
+
+
+def build_history_messages(chat_messages: list) -> list:
+    """Turns the UI's stored chat history (dicts with "role"/"content", as
+    st.session_state.messages holds them) into LangChain messages for
+    classify_and_route()'s `history` param.
+
+    Bounded to the last HISTORY_TURNS exchanges — unbounded history would
+    grow every prompt's token cost (and cost) without limit over a long
+    conversation; a handful of recent turns is enough for the model to
+    track its own open question ("can you confirm your rate?" -> "$3 per
+    unit") without re-sending the whole chat log every time.
+    """
+    from langchain_core.messages import AIMessage
+    recent = chat_messages[-(HISTORY_TURNS * 2):]
+    out = []
+    for m in recent:
+        role = m.get("role")
+        content = m.get("content", "")
+        if role == "user":
+            out.append(HumanMessage(content=content))
+        elif role == "assistant":
+            out.append(AIMessage(content=content))
+    return out
 
 # =====================================================================
 # SECTION 10 · THE EVAL SET — how you prove the bot is getting better
@@ -3319,6 +3613,13 @@ def answer(question: str, index: dict, user: Optional[dict] = None, excel_data: 
 #   "It seems better" is not evidence. A fixed list of questions with
 #   expected answers is. Run it before and after every change you make.
 # =====================================================================
+
+# The eval set's own baseline persona: fully verified, a real segment, a
+# neutral register. Case entries below only override "mood" (via a `user`
+# dict) to exercise a specific TONES voice — segment/id_verified stay this
+# so a domain question never fails on the territory/authority axes for
+# reasons unrelated to what that case is actually testing.
+EVAL_USER = {"id_verified": True, "mood": "warm", "segment": "Domestic"}
 
 EVAL_SET = [                                         # each entry is one test
     # --- questions the bot SHOULD answer from the documents ---
@@ -3339,7 +3640,25 @@ EVAL_SET = [                                         # each entry is one test
     {"q": "hi",                                        "must_mention": ["help", "hello", "welcome"]},
     {"q": "who are you",                               "must_mention": ["assistant", "computer", "software", "built for"]},
 
-    # TODO_students: add 4 more, including one for each register in your wardrobe.
+    # --- one per register: same domain question, different TONES voice.
+    #     Escalated replies (guardrail/authority/territory) skip dress()
+    #     entirely — see finalize_reply()'s early return — so these use a
+    #     question that's actually answered, to prove the wrapper text
+    #     from TONES[register] reaches the customer instead of just
+    #     checking the register resolves correctly in isolation. ---
+    # "How do I read an energy label?" — not one of chatbot()'s
+    # phrase-matched template-rule triggers (unlike "standby"/"vampire
+    # power", which shortcut straight to a plain domain_template() string
+    # and never reach finalize_reply()'s dress() call at all — checked
+    # against the trigger list in chatbot() before picking this one).
+    {"q": "How do I read an energy label?", "must_mention": ["dear customer"],
+     "user": {**EVAL_USER, "mood": "formal"}},
+    {"q": "How do I read an energy label?", "must_mention": ["sorted quickly"],
+     "user": {**EVAL_USER, "mood": "frustrated"}},
+    {"q": "How do I read an energy label?", "must_mention": ["one step at a time"],
+     "user": {**EVAL_USER, "mood": "confused"}},
+    {"q": "How do I read an energy label?", "must_mention": ["quick answer"],
+     "user": {**EVAL_USER, "mood": "rushed"}},
 ]                                                    # eval set ends here
 
 
@@ -3348,10 +3667,13 @@ def run_eval(index: dict, user: Optional[dict] = None) -> list:
 
     Pass a different user to test the same questions from another segment
     or register — the answer should change voice but never change facts.
+    A case may also carry its own "user" override (e.g. the register-tone
+    cases below), which takes priority over the `user` argument here.
     """
     rows = []                                        # one result row per test
     for case in EVAL_SET:                            # go through each test
-        out = answer(case["q"], index, user)         # run the real pipeline, no shortcuts
+        case_user = case.get("user", user)            # per-case override, else the shared user
+        out = answer(case["q"], index, case_user)     # run the real pipeline, no shortcuts
         low = out["reply"].lower()                   # lowercase so matching is not fussy
         hit = any(m.lower() in low for m in case["must_mention"])   # any required word present?
         rows.append({                                # record what happened
@@ -3733,6 +4055,53 @@ def streamlit_app():
             "chat": "Chat", "status": "Location status", "tariffs": "Area tariffs",
             "calc": "Cost calculator", "excel": "Knowledge base", "blueprint": "Blueprint",
             "web": "Web harvest", "sources": "Sources", "eval": "Eval",
+            "web_header": "Harvest from the LUCELEC website",
+            "web_intro": "Fetch a page into the review queue. Nothing is added to the knowledge base until a staff member approves it.",
+            "web_scope_caption": "Staff workflow · review before indexing",
+            "web_url_label": "Page URL",
+            "web_url_placeholder": "https://www.lucelec.com/",
+            "web_url_help": "Use an HTTPS page on an allowed LUCELEC domain.",
+            "web_fetch_btn": "Fetch for review",
+            "web_limits_header": "Harvest guardrails",
+            "web_allowed_domains_metric": "Allowed domains",
+            "web_delay_metric": "Base delay",
+            "web_size_metric": "Max page size",
+            "web_robots_metric": "Robots policy",
+            "web_robots_value": "Obeyed",
+            "web_pending_metric": "Awaiting review",
+            "web_limits_caption": "Requests stay on the allowlist, obey robots.txt, follow redirects safely, and are size-limited.",
+            "web_guidance_header": "Before you fetch",
+            "web_guidance_body": "Use a specific LUCELEC page, then review its source URL and captured text before approving it.",
+            "web_advanced_expander": "Advanced harvest details",
+            "web_allowlist_label": "Allowed hosts",
+            "web_delay_label": "Configured base delay",
+            "web_size_label": "Response size limit",
+            "web_pending_header": "Pending review",
+            "web_pending_count": "{count} page(s) waiting",
+            "web_review_caption": "Approval moves a page into the knowledge base. Rejection removes it from the waiting room.",
+            "web_source_label": "Source URL",
+            "web_saved_file_label": "Saved file",
+            "web_word_count": "{count} words",
+            "web_preview_label": "Preview",
+            "web_reviewer_label": "Reviewer initials",
+            "web_reviewer_help": "Initials are recorded with the approval.",
+            "web_approve_btn": "Approve and index",
+            "web_reject_btn": "Reject",
+            "web_empty_title": "Review queue is clear",
+            "web_empty_body": "Fetched pages will appear here for approval before they can be indexed or quoted.",
+            "web_success_title": "Page captured for review",
+            "web_success_body": "{words} words are waiting for a staff review. The chatbot cannot use this page yet.",
+            "web_error_title": "Page was not captured",
+            "web_error_hint": "Check the URL and the policy message above, then try again if appropriate.",
+            "sources_header": "Sources and retrieval test",
+            "sources_intro": "Check which approved knowledge-base passages would be retrieved for a customer question.",
+            "sources_query_label": "Test question",
+            "sources_query_help": "Use the same kind of wording a customer might use.",
+            "sources_result_count": "{count} passage(s) retrieved",
+            "sources_source_label": "Source",
+            "sources_score_label": "Relevance score",
+            "sources_empty_title": "No matching passages",
+            "sources_empty_body": "Try a broader question or confirm that approved source documents cover this topic.",
             "ask_prompt": "Ask about appliance costs, tariffs or saving energy...",
             "compare_btn": "Compare",
             "chats_header": "Chats", "new_chat_btn": "➕ New chat", "new_chat_title": "New chat",
@@ -3789,6 +4158,53 @@ def streamlit_app():
             "chat": "Chat", "status": "Estado de ubicación", "tariffs": "Tarifas de área",
             "calc": "Calculadora de costos", "excel": "Base de conocimiento", "blueprint": "Plano",
             "web": "Recolección web", "sources": "Fuentes", "eval": "Evaluación",
+            "web_header": "Recopilar del sitio web de LUCELEC",
+            "web_intro": "Obtenga una página en la cola de revisión. Nada se agrega a la base de conocimiento hasta que un miembro del personal lo apruebe.",
+            "web_scope_caption": "Flujo del personal · revisar antes de indexar",
+            "web_url_label": "URL de la página",
+            "web_url_placeholder": "https://www.lucelec.com/",
+            "web_url_help": "Use una página HTTPS de un dominio LUCELEC permitido.",
+            "web_fetch_btn": "Obtener para revisión",
+            "web_limits_header": "Protecciones de recopilación",
+            "web_allowed_domains_metric": "Dominios permitidos",
+            "web_delay_metric": "Demora base",
+            "web_size_metric": "Tamaño máximo",
+            "web_robots_metric": "Política robots",
+            "web_robots_value": "Respetada",
+            "web_pending_metric": "En revisión",
+            "web_limits_caption": "Las solicitudes permanecen en la lista permitida, respetan robots.txt, siguen redirecciones seguras y tienen límite de tamaño.",
+            "web_guidance_header": "Antes de obtener",
+            "web_guidance_body": "Use una página específica de LUCELEC y revise su URL de origen y texto capturado antes de aprobarla.",
+            "web_advanced_expander": "Detalles avanzados de recopilación",
+            "web_allowlist_label": "Hosts permitidos",
+            "web_delay_label": "Demora base configurada",
+            "web_size_label": "Límite de respuesta",
+            "web_pending_header": "Revisión pendiente",
+            "web_pending_count": "{count} página(s) en espera",
+            "web_review_caption": "La aprobación mueve la página a la base de conocimiento. El rechazo la elimina de la sala de espera.",
+            "web_source_label": "URL de origen",
+            "web_saved_file_label": "Archivo guardado",
+            "web_word_count": "{count} palabras",
+            "web_preview_label": "Vista previa",
+            "web_reviewer_label": "Iniciales del revisor",
+            "web_reviewer_help": "Las iniciales se guardan con la aprobación.",
+            "web_approve_btn": "Aprobar e indexar",
+            "web_reject_btn": "Rechazar",
+            "web_empty_title": "La cola de revisión está vacía",
+            "web_empty_body": "Las páginas obtenidas aparecerán aquí para su aprobación antes de indexarse o citarse.",
+            "web_success_title": "Página capturada para revisión",
+            "web_success_body": "{words} palabras esperan la revisión del personal. El chatbot todavía no puede usar esta página.",
+            "web_error_title": "No se capturó la página",
+            "web_error_hint": "Revise la URL y el mensaje de política anterior; luego inténtelo de nuevo si corresponde.",
+            "sources_header": "Fuentes y prueba de recuperación",
+            "sources_intro": "Compruebe qué pasajes aprobados de la base de conocimiento se recuperarían para una pregunta del cliente.",
+            "sources_query_label": "Pregunta de prueba",
+            "sources_query_help": "Use el tipo de redacción que podría usar un cliente.",
+            "sources_result_count": "{count} pasaje(s) recuperado(s)",
+            "sources_source_label": "Fuente",
+            "sources_score_label": "Puntuación de relevancia",
+            "sources_empty_title": "No hay pasajes coincidentes",
+            "sources_empty_body": "Pruebe una pregunta más amplia o confirme que los documentos aprobados cubren este tema.",
             "ask_prompt": "Pregunte sobre costos de electrodomésticos o tarifas...",
             "compare_btn": "Comparar",
             "chats_header": "Chats", "new_chat_btn": "➕ Nuevo chat", "new_chat_title": "Nuevo chat",
@@ -3845,6 +4261,53 @@ def streamlit_app():
             "chat": "Discuter", "status": "État de l'emplacement", "tariffs": "Tarifs de zone",
             "calc": "Calculateur de coûts", "excel": "Base de connaissances", "blueprint": "Plan d'action",
             "web": "Collecte Web", "sources": "Sources", "eval": "Évaluation",
+            "web_header": "Collecte depuis le site LUCELEC",
+            "web_intro": "Récupérez une page dans la file de vérification. Rien n'est ajouté à la base de connaissances avant l'approbation d'un membre du personnel.",
+            "web_scope_caption": "Flux du personnel · vérifier avant l'indexation",
+            "web_url_label": "URL de la page",
+            "web_url_placeholder": "https://www.lucelec.com/",
+            "web_url_help": "Utilisez une page HTTPS d'un domaine LUCELEC autorisé.",
+            "web_fetch_btn": "Récupérer pour vérification",
+            "web_limits_header": "Garde-fous de collecte",
+            "web_allowed_domains_metric": "Domaines autorisés",
+            "web_delay_metric": "Délai de base",
+            "web_size_metric": "Taille maximale",
+            "web_robots_metric": "Politique robots",
+            "web_robots_value": "Respectée",
+            "web_pending_metric": "En vérification",
+            "web_limits_caption": "Les requêtes restent sur la liste autorisée, respectent robots.txt, suivent les redirections de façon sûre et sont limitées en taille.",
+            "web_guidance_header": "Avant de récupérer",
+            "web_guidance_body": "Utilisez une page LUCELEC précise, puis vérifiez son URL source et le texte récupéré avant de l'approuver.",
+            "web_advanced_expander": "Détails avancés de collecte",
+            "web_allowlist_label": "Hôtes autorisés",
+            "web_delay_label": "Délai de base configuré",
+            "web_size_label": "Limite de réponse",
+            "web_pending_header": "Vérification en attente",
+            "web_pending_count": "{count} page(s) en attente",
+            "web_review_caption": "L'approbation déplace la page dans la base de connaissances. Le rejet la supprime de la file d'attente.",
+            "web_source_label": "URL source",
+            "web_saved_file_label": "Fichier enregistré",
+            "web_word_count": "{count} mots",
+            "web_preview_label": "Aperçu",
+            "web_reviewer_label": "Initiales du vérificateur",
+            "web_reviewer_help": "Les initiales sont enregistrées avec l'approbation.",
+            "web_approve_btn": "Approuver et indexer",
+            "web_reject_btn": "Rejeter",
+            "web_empty_title": "La file de vérification est vide",
+            "web_empty_body": "Les pages récupérées apparaîtront ici pour approbation avant d'être indexées ou citées.",
+            "web_success_title": "Page capturée pour vérification",
+            "web_success_body": "{words} mots attendent la vérification du personnel. Le chatbot ne peut pas encore utiliser cette page.",
+            "web_error_title": "La page n'a pas été capturée",
+            "web_error_hint": "Vérifiez l'URL et le message de politique ci-dessus, puis réessayez si nécessaire.",
+            "sources_header": "Sources et test de récupération",
+            "sources_intro": "Vérifiez quels passages approuvés de la base de connaissances seraient récupérés pour une question client.",
+            "sources_query_label": "Question de test",
+            "sources_query_help": "Utilisez une formulation comparable à celle d'un client.",
+            "sources_result_count": "{count} passage(s) récupéré(s)",
+            "sources_source_label": "Source",
+            "sources_score_label": "Score de pertinence",
+            "sources_empty_title": "Aucun passage correspondant",
+            "sources_empty_body": "Essayez une question plus générale ou vérifiez que les documents approuvés couvrent ce sujet.",
             "ask_prompt": "Renseignez-vous sur les coûts des appareils ou l'énergie...",
             "compare_btn": "Comparer",
             "chats_header": "Discussions", "new_chat_btn": "➕ Nouvelle discussion",
@@ -3902,6 +4365,53 @@ def streamlit_app():
             "chat": "Kozé", "status": "Estati Kote", "tariffs": "Pwi Zòn",
             "calc": "Kalkilatris Pri", "excel": "Konesans Baz", "blueprint": "Plan",
             "web": "Ramase Web", "sources": "Sous", "eval": "Evalyasyon",
+            "web_header": "Ramase enfòmasyon nan sit LUCELEC",
+            "web_intro": "Chèche yon paj mete nan liy pou verifye. Anyen pa antre nan baz konesans lan jouk yon anplwaye apwouve li.",
+            "web_scope_caption": "Travay anplwaye · verifye anvan mete nan endèks",
+            "web_url_label": "URL paj la",
+            "web_url_placeholder": "https://www.lucelec.com/",
+            "web_url_help": "Sèvi ak yon paj HTTPS sou yon domèn LUCELEC ki otorize.",
+            "web_fetch_btn": "Chèche pou verifye",
+            "web_limits_header": "Pwoteksyon ramase a",
+            "web_allowed_domains_metric": "Domèn ki otorize",
+            "web_delay_metric": "Reta baz",
+            "web_size_metric": "Pi gwo gwosè paj",
+            "web_robots_metric": "Règleman robots",
+            "web_robots_value": "Respekte",
+            "web_pending_metric": "Ap tann verifye",
+            "web_limits_caption": "Demann yo rete nan lis otorize a, yo respekte robots.txt, yo swiv redireksyon an sekirite, epi yo gen limit gwosè.",
+            "web_guidance_header": "Avan ou chèche",
+            "web_guidance_body": "Sèvi ak yon paj LUCELEC ki presi, epi verifye URL sous la ak tèks la avan ou apwouve li.",
+            "web_advanced_expander": "Detay avanse sou ramase a",
+            "web_allowlist_label": "Òt ki otorize",
+            "web_delay_label": "Reta baz ki konfigire",
+            "web_size_label": "Limit repons lan",
+            "web_pending_header": "Ap tann verifye",
+            "web_pending_count": "{count} paj ap tann",
+            "web_review_caption": "Apwobasyon mete paj la nan baz konesans lan. Rejte retire li nan liy datant lan.",
+            "web_source_label": "URL sous la",
+            "web_saved_file_label": "Fichye ki sove",
+            "web_word_count": "{count} mo",
+            "web_preview_label": "Ti apèsi",
+            "web_reviewer_label": "Inisyal moun k ap verifye a",
+            "web_reviewer_help": "Inisyal yo ap anrejistre ak apwobasyon an.",
+            "web_approve_btn": "Apwouve epi mete nan endèks",
+            "web_reject_btn": "Rejte",
+            "web_empty_title": "Pa gen anyen nan liy verifye a",
+            "web_empty_body": "Paj ou chèche yo ap parèt la pou apwobasyon avan yo antre nan endèks oswa yo site.",
+            "web_success_title": "Paj la pran pou verifye",
+            "web_success_body": "{words} mo ap tann yon anplwaye verifye yo. Chatbot la poko ka sèvi ak paj sa a.",
+            "web_error_title": "Paj la pa t pran",
+            "web_error_hint": "Tcheke URL la ak mesaj règleman an anlè a, epi eseye ankò si sa bon.",
+            "sources_header": "Sous ak tès rechèch",
+            "sources_intro": "Tcheke ki pasaj apwouve nan baz konesans lan ki t ap soti pou yon kesyon kliyan.",
+            "sources_query_label": "Kesyon tès",
+            "sources_query_help": "Sèvi ak jan yon kliyan ta ka poze kesyon an.",
+            "sources_result_count": "{count} pasaj soti",
+            "sources_source_label": "Sous",
+            "sources_score_label": "Nòt enpòtans",
+            "sources_empty_title": "Pa gen pasaj ki mache",
+            "sources_empty_body": "Eseye yon kesyon ki pi laj oswa verifye dokiman apwouve yo kouvri sijè sa a.",
             "ask_prompt": "Mande sou pri aparèy, tarif oswa ekonomize kouran...",
             "compare_btn": "Konpare",
             "chats_header": "Kozé yo", "new_chat_btn": "➕ Nouvo kozé", "new_chat_title": "Nouvo kozé",
@@ -4104,10 +4614,15 @@ def streamlit_app():
         st.session_state[session_key] = value
         return value
 
-    def sticky_selectbox(label: str, options: list, session_key: str, format_func=str) -> str:
+    def sticky_selectbox(label: str, options: list, session_key: str, format_func=str,
+                          key_suffix: str = "") -> str:
+        """key_suffix: bump this (e.g. a counter in session_state) to force
+        a genuine widget remount when code — not the user — changes the
+        value. A reused `key` with only `index` changed does not reliably
+        redraw a BaseWeb Select's on-screen label; a new key does."""
         current = st.session_state.get(session_key)
         index = options.index(current) if current in options else 0
-        value = st.selectbox(label, options, index=index, key=f"{session_key}__widget",
+        value = st.selectbox(label, options, index=index, key=f"{session_key}__widget{key_suffix}",
                               format_func=format_func)
         st.session_state[session_key] = value
         return value
@@ -4179,6 +4694,9 @@ def streamlit_app():
             t("territory_label"), [t("territory_default_opt")] + list(LOCATION_CONTEXT.keys()),
             "identity_territory",
             format_func=lambda v: t_option("territory_options", v),
+            # node_art() bumps this when it auto-detects a spoken territory
+            # answer mid-chat, so that programmatic change actually repaints.
+            key_suffix=f"_{st.session_state.get('identity_territory_nonce', 0)}",
         )
 
     def current_user_from_identity() -> dict:
@@ -4596,9 +5114,27 @@ def streamlit_app():
                         # scores them against THIS question and only the relevant
                         # bits get cited — not the whole document dumped every time.
                         active_index = build_index(index["chunks"] + upload_chunks) if upload_chunks else index
+                        # Snapshotted before answer() runs: node_art may resolve a
+                        # spoken territory answer (e.g. "domestic") mid-call and
+                        # write it straight to st.session_state["identity_territory"].
+                        # The Settings sidebar was already drawn earlier THIS script
+                        # run using the old value, so a change here needs its own
+                        # rerun below to actually show up in the dropdown.
+                        territory_before_answer = st.session_state.get("identity_territory")
+                        # st.session_state.messages already has THIS turn's
+                        # user entry appended above — exclude it here since
+                        # `q` is passed separately and classify_and_route()
+                        # appends it itself. Without prior turns, a bot
+                        # question like "confirm your rate?" followed by the
+                        # customer's "$3 per unit" looks like two unrelated
+                        # messages: chatbot() re-runs RAG on "$3 per unit"
+                        # alone, finds nothing, and dead-ends instead of
+                        # using the answer it just asked for.
+                        history = build_history_messages(st.session_state.messages[:-1])
                         out = answer(q, active_index, user, excel_data=excel_row_records, language=sim_language,
                                      persona_name=st.session_state.get("persona_name"),
-                                     persona_who=st.session_state.get("persona_who"))
+                                     persona_who=st.session_state.get("persona_who"),
+                                     history=history)
 
                     st.write_stream(_stream_words(escape_markdown_dollars(out["reply"])))
 
@@ -4659,6 +5195,13 @@ def streamlit_app():
                     chat["title"] = summarize_chat_title(q)
                     chat["titled"] = True
                     break
+
+            # If this message resolved the territory (see node_art), the
+            # Settings sidebar rendered stale at the top of this same run —
+            # rerun once so it picks up the new value now instead of only
+            # on the customer's NEXT unrelated interaction.
+            if st.session_state.get("identity_territory") != territory_before_answer:
+                st.rerun()
 
         if st.session_state.show_voice_widget:
             st.caption(t("mic_caption"))
@@ -4905,26 +5448,205 @@ def streamlit_app():
             st.caption("Every voice TONES/dress() can put on a reply.")
             for name in TONES: st.write(f"**{name}** — {dress(name, '(sample reply text)')}")
 
-        with tab_web:                                    
-            st.subheader("Harvest a page") 
-            url = st.text_input("Page address", "https://www.lucelec.com/") 
-            if st.button("Fetch page"):                  
-                with st.spinner("Downloading…"): 
-                    res = harvest(url)                   
-                if res["ok"]: st.success("Awaiting approval")
-                else: st.error(res["error"])               
+        with tab_web:
+            st.markdown(
+                f"""
+                <section class="lucelec-harvest-hero" aria-labelledby="lucelec-harvest-heading">
+                    <div class="lucelec-harvest-kicker">{html.escape(t("web_scope_caption"))}</div>
+                    <h2 id="lucelec-harvest-heading">{html.escape(t("web_header"))}</h2>
+                    <p class="lucelec-harvest-description">{html.escape(t("web_intro"))}</p>
+                </section>
+                """,
+                unsafe_allow_html=True,
+            )
 
-        with tab_sources:                                
-            st.subheader("RAG Search Test")
-            probe = st.text_input("Test query", "how much does an ac cost") 
-            for i, h in enumerate(retrieve_chunks(probe, index), 1): 
-                st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")   
-                st.caption(escape_markdown_dollars(h["text"]))                    
+            pending_rows = list_pending()
+            allowed_count = len(allowed_hosts())
+            delay_value = f"{FETCH_DELAY_SECONDS:g}s"
+            size_value = f"{MAX_PAGE_BYTES / 1_000_000:g} MB"
+            st.markdown(
+                f"""
+                <div class="lucelec-harvest-metrics" aria-label="{html.escape(t("web_limits_header"))}">
+                    <div class="lucelec-harvest-metric"><div class="lucelec-harvest-metric-label">{html.escape(t("web_allowed_domains_metric"))}</div><div class="lucelec-harvest-metric-value">{allowed_count}</div></div>
+                    <div class="lucelec-harvest-metric"><div class="lucelec-harvest-metric-label">{html.escape(t("web_delay_metric"))}</div><div class="lucelec-harvest-metric-value">{html.escape(delay_value)}</div></div>
+                    <div class="lucelec-harvest-metric"><div class="lucelec-harvest-metric-label">{html.escape(t("web_size_metric"))}</div><div class="lucelec-harvest-metric-value">{html.escape(size_value)}</div></div>
+                    <div class="lucelec-harvest-metric"><div class="lucelec-harvest-metric-label">{html.escape(t("web_pending_metric"))}</div><div class="lucelec-harvest-metric-value">{len(pending_rows)}</div></div>
+                </div>
+                <div class="lucelec-harvest-caption">{html.escape(t("web_limits_caption"))}</div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            with st.expander(t("web_advanced_expander"), expanded=False):
+                allowed_host_text = ", ".join(sorted(allowed_hosts())) or "—"
+                st.markdown(
+                    f"""
+                    <div class="lucelec-harvest-card-caption"><strong>{html.escape(t("web_allowlist_label"))}:</strong> {html.escape(allowed_host_text)}</div>
+                    <div class="lucelec-harvest-card-caption"><strong>{html.escape(t("web_delay_label"))}:</strong> {html.escape(delay_value)} · robots.txt may require a longer delay</div>
+                    <div class="lucelec-harvest-card-caption"><strong>{html.escape(t("web_size_label"))}:</strong> {html.escape(size_value)}</div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown(
+                f"""
+                <div class="lucelec-harvest-guidance">
+                    <strong>{html.escape(t("web_guidance_header"))}</strong>
+                    <p>{html.escape(t("web_guidance_body"))}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            st.markdown('<div class="lucelec-harvest-url-panel">', unsafe_allow_html=True)
+            url_col, action_col = st.columns([4, 1.25], gap="small")
+            with url_col:
+                url = st.text_input(
+                    t("web_url_label"),
+                    value=t("web_url_placeholder"),
+                    help=t("web_url_help"),
+                    key="web_harvest_url",
+                )
+            with action_col:
+                st.write("")
+                fetch_clicked = st.button(
+                    t("web_fetch_btn"),
+                    type="primary",
+                    use_container_width=True,
+                    key="web_harvest_fetch",
+                )
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            if fetch_clicked:
+                with st.spinner(t("web_progress")):
+                    res = harvest(url)
+                if res["ok"]:
+                    st.success(t("web_success_title"))
+                    st.caption(t("web_success_body").format(words=res["words"]))
+                else:
+                    st.error(res["error"])
+                    st.caption(t("web_error_hint"))
+                pending_rows = list_pending()
+
+            st.markdown(
+                f"""
+                <div class="lucelec-harvest-section-head">
+                    <h3>{html.escape(t("web_pending_header"))}</h3>
+                    <span class="lucelec-harvest-section-count">{html.escape(t("web_pending_count").format(count=len(pending_rows)))}</span>
+                </div>
+                <div class="lucelec-harvest-card-caption">{html.escape(t("web_review_caption"))}</div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            if not pending_rows:
+                st.markdown(
+                    f"""
+                    <div class="lucelec-harvest-empty">
+                        <strong>{html.escape(t("web_empty_title"))}</strong>
+                        <p>{html.escape(t("web_empty_body"))}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            for row in pending_rows:
+                with st.container(border=True):
+                    st.markdown(
+                        f"""
+                        <div class="lucelec-harvest-item">
+                            <div class="lucelec-harvest-item-title">{html.escape(row["file"])}</div>
+                            <div class="lucelec-harvest-item-meta">{html.escape(t("web_saved_file_label"))} · {html.escape(t("web_word_count").format(count=row["words"]))}</div>
+                            <div class="lucelec-harvest-url" aria-label="{html.escape(t("web_source_label"))}">{html.escape(row["url"])}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    with st.expander(f"{t('web_preview_label')} · {row['file']}", expanded=False):
+                        st.text(row["preview"])
+                    a1, a2, a3 = st.columns([2.4, 1.25, 0.8], gap="small")
+                    initials = a1.text_input(
+                        t("web_reviewer_label"),
+                        key=f"web_initials_{row['file']}",
+                        help=t("web_reviewer_help"),
+                    )
+                    if a2.button(t("web_approve_btn"), key=f"web_approve_{row['file']}", type="primary"):
+                        approve_result = approve_harvest(row["file"], initials)
+                        if approve_result["ok"]:
+                            st.cache_resource.clear()
+                            st.success(f"Approved by {approve_result['by']} — now in the knowledge base.")
+                            st.rerun()
+                        else:
+                            st.error(approve_result["error"])
+                    if a3.button(t("web_reject_btn"), key=f"web_reject_{row['file']}"):
+                        reject_harvest(row["file"])
+                        st.rerun()
+
+        with tab_sources:
+            st.markdown(
+                f"""
+                <section class="lucelec-harvest-hero" aria-labelledby="lucelec-sources-heading">
+                    <div class="lucelec-harvest-kicker">{html.escape(t("sources_header"))}</div>
+                    <h2 id="lucelec-sources-heading">{html.escape(t("sources_header"))}</h2>
+                    <p class="lucelec-harvest-description">{html.escape(t("sources_intro"))}</p>
+                </section>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown('<div class="lucelec-source-test-panel">', unsafe_allow_html=True)
+            probe = st.text_input(
+                t("sources_query_label"),
+                "how much does an ac cost",
+                help=t("sources_query_help"),
+                key="sources_probe",
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            source_hits = retrieve_chunks(probe, index)
+            if source_hits:
+                st.caption(t("sources_result_count").format(count=len(source_hits)))
+                for i, h in enumerate(source_hits, 1):
+                    source_name = html.escape(str(h["source"]))
+                    score = html.escape(str(h["score"]))
+                    passage = html.escape(escape_markdown_dollars(str(h["text"])))
+                    st.markdown(
+                        f"""
+                        <article class="lucelec-source-result" aria-label="{html.escape(t("sources_source_label"))} {i}">
+                            <div class="lucelec-source-result-head">
+                                <span class="lucelec-source-result-source">[{i}] {source_name}</span>
+                                <span class="lucelec-source-result-score">{html.escape(t("sources_score_label"))}: {score}</span>
+                            </div>
+                            <div class="lucelec-source-result-text">{passage}</div>
+                        </article>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.markdown(
+                    f"""
+                    <div class="lucelec-harvest-empty">
+                        <strong>{html.escape(t("sources_empty_title"))}</strong>
+                        <p>{html.escape(t("sources_empty_body"))}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
         with tab_eval:
             st.subheader("Evaluations")
+            st.caption(
+                "Runs against a fixed, fully-verified Domestic persona — not "
+                "whatever Territory/Register happen to be set in Settings right "
+                "now. Otherwise every domain question in the set fails on the "
+                "territory axis the moment Territory is \"(unknown)\", which "
+                "isn't the bot regressing, just this session not being set up "
+                "as a customer yet. A reproducible baseline is the whole point "
+                "of an eval set (see Section 10) — 'run it before and after "
+                "every change' only means something if the questions are "
+                "answered from the same identity every time."
+            )
             if st.button("Run eval set"):
-                rows = run_eval(index, user)
+                rows = run_eval(index, EVAL_USER)
                 # st.table, not st.dataframe: a static one-shot report needs
                 # no interactive sorting/scrolling, and st.dataframe renders
                 # through a canvas that CSS injection can't reach — it always

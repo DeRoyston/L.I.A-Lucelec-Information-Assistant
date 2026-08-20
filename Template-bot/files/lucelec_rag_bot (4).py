@@ -40,7 +40,6 @@ from collections import Counter    # counts how many times each word appears
 from typing import Optional        # lets us say "this might return nothing"
 from typing import TypedDict, Optional, List # Imports type hinting tools to define the shape of our graph state memory
 from uuid import uuid4
-from email.message import EmailMessage
 from langgraph.graph import StateGraph, END # Imports the core components needed to build a stateful LangGraph workflow
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langchain_core.tools import tool
@@ -49,7 +48,6 @@ from langgraph.graph.message import add_messages
 from typing import Annotated
 import time
 import tempfile
-import smtplib
 import streamlit.components.v1 as components
 
 # =====================================================================
@@ -117,7 +115,19 @@ def build_accessibility_css(font_size: int) -> str:
 
 
 DARK_MODE_CSS = """
-:root { color-scheme: dark; }
+:root {
+    color-scheme: dark;
+}
+/* st.table (the Eval tab's results, and the Cost Calculator's Compare
+   results) renders a real static HTML <table>, but Streamlit's own base
+   styles give it a light background/border independent of the page
+   theme — same class of miss as the expander summary and code spans
+   above, just a different element. */
+[data-testid="stTable"] table, [data-testid="stTable"] th, [data-testid="stTable"] td {
+    background-color: #1e222b !important;
+    color: #fafafa !important;
+    border-color: #3a3f4b !important;
+}
 html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
 [data-testid="stSidebar"], [data-testid="stMain"], [data-testid="stMainBlockContainer"] {
     background-color: #0e1117 !important;
@@ -132,6 +142,23 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
 [data-testid="stChatInput"] {
     background-color: #1e222b !important;
 }
+/* stExpander's own background above covers its BODY, but the clickable
+   <summary> header is a separate element the dark rule never reached —
+   it kept Streamlit's light-theme default (near-white bg, near-white
+   text), rendering as a blank white bar with invisible label text. Hits
+   every expander in the app: Settings, "Sources used", RAG Search Test. */
+[data-testid="stExpander"] summary {
+    background-color: #1e222b !important;
+    color: #fafafa !important;
+}
+/* Same class of bug as the expander summary above, different element:
+   inline markdown code spans (`` `like this` ``) — the staff-account
+   username badge, API key names — keep Streamlit's light default (near-
+   white bg, near-white text), rendering as a blank white pill. */
+code {
+    background-color: #1e222b !important;
+    color: #fafafa !important;
+}
 [data-testid="stChatInput"] div {
     background-color: transparent !important;
 }
@@ -142,10 +169,25 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
 [data-testid="stChatInput"] textarea::placeholder {
     color: #9aa1ab !important;
 }
-.stTextInput input, .stTextArea textarea, .stNumberInput input,
-.stSelectbox div[data-baseweb="select"] > div {
+.stTextInput input, .stTextArea textarea, .stNumberInput input {
     background-color: #1e222b !important;
     color: #fafafa !important;
+}
+/* st.selectbox's CLOSED box — this Streamlit version replaced the old
+   BaseWeb [data-baseweb="select"] markup with a react-aria ComboBox
+   (input[role="combobox"] + a chevron button, wrapped in [role="group"]),
+   so the rule above that used to catch it stopped matching anything and
+   every selectbox in the app quietly stayed white. */
+.stSelectbox [role="group"] {
+    background-color: #1e222b !important;
+    border-color: #3a3f4b !important;
+}
+.stSelectbox input[role="combobox"] {
+    background-color: transparent !important;
+    color: #fafafa !important;
+}
+.stSelectbox button[aria-haspopup="listbox"] svg {
+    fill: #fafafa !important;
 }
 [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-header"],
 [data-testid="stBaseButton-headerNoPadding"], [data-testid="stChatInputSubmitButton"] {
@@ -153,8 +195,14 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
     color: #fafafa !important;
     border-color: #3a3f4b !important;
 }
-[data-testid="stBaseButton-secondary"] *, [data-testid="stBaseButton-header"] *,
-[data-testid="stBaseButton-headerNoPadding"] *, [data-testid="stChatInputSubmitButton"] * {
+/* :not([fill="none"]) matters: some Material icons (e.g. the header kebab
+   menu's "more_vert") ship a second, invisible 24x24 backdrop <path
+   fill="none">  alongside the real glyph path, used as a hit-box. Forcing
+   fill on every descendant turned that backdrop solid white, fully
+   covering the three-dot icon drawn on top of it with a blank white
+   square. */
+[data-testid="stBaseButton-secondary"] *:not([fill="none"]), [data-testid="stBaseButton-header"] *:not([fill="none"]),
+[data-testid="stBaseButton-headerNoPadding"] *:not([fill="none"]), [data-testid="stChatInputSubmitButton"] *:not([fill="none"]) {
     color: #fafafa !important;
     fill: #fafafa !important;
 }
@@ -180,6 +228,13 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
    SVG fill= attribute precisely so this override can reach them — a lighter
    slate that still reads against the #1a2733 dark footer background. */
 .lucelec-footer-icon-building { fill: #4a6278 !important; }
+/* parish_tooltip_html() hardcodes light inline styles on these badges —
+   !important here still wins over a plain (non-!important) inline style. */
+.parish-badge {
+    background: #1e222b !important;
+    color: #fafafa !important;
+    border-color: #3a3f4b !important;
+}
 /* The banner logo uses mix-blend-mode: multiply in light mode to blend its
    white PNG background into the light-blue banner. Against the dark navy
    dark-mode banner, multiply drives every logo pixel toward black and the
@@ -194,6 +249,73 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
 .stTabs [data-baseweb="tab"]:not([aria-selected="true"]) { border-color: #3a3f4b !important; }
 [data-testid="stChatInput"] { border-color: #3a3f4b !important; }
 [data-testid="stSidebar"] button { border-color: #3a3f4b !important; }
+/* st.error/warning/success/info render their message through st.markdown
+   internally, so the broad stMarkdownContainer rule above already forces
+   the TEXT to #fafafa — but stAlert's own background/border kept
+   Streamlit's light pastel default, turning "blank white box" into the
+   worse "white text on near-white box" once the text rule applied. */
+[data-testid="stAlert"] {
+    background-color: #1e222b !important;
+    border-color: #3a3f4b !important;
+}
+/* Same story for the file-uploader dropzone ("Drag and drop..." panel). */
+[data-testid="stFileUploaderDropzone"] {
+    background-color: #1e222b !important;
+    border-color: #3a3f4b !important;
+}
+/* st.container(border=True) wrapper (Harvest approval panels). */
+[data-testid="stVerticalBlockBorderWrapper"] { border-color: #3a3f4b !important; }
+/* The OPEN dropdown list for st.selectbox/st.multiselect and the panel for
+   st.popover ("+" upload button) are BaseWeb portals rendered outside
+   stApp's own DOM tree, so none of the data-testid rules above ever reach
+   them — they kept Streamlit's light default: a white options list with
+   near-invisible text on hover. */
+[data-baseweb="popover"] { background-color: #1e222b !important; }
+[data-baseweb="menu"], [role="listbox"] {
+    background-color: #1e222b !important;
+    color: #fafafa !important;
+}
+/* Each row gets its OWN opaque background rather than relying on the
+   listbox's background showing through a transparent row — react-aria
+   repositions rows via CSS transform on hover/keyboard-nav, and Chrome's
+   compositor doesn't always repaint the sibling rows left behind, so a
+   row can end up rendering the previous frame's (light-mode) paint under
+   real GPU compositing even though this rule was already !important and
+   already matching — invisible in headless (software-rendered) testing,
+   visible as ghosted/transparent rows under real hardware acceleration. */
+[role="option"] {
+    background-color: #1e222b !important;
+    color: #fafafa !important;
+}
+[role="option"]:hover, [role="option"][aria-selected="true"] {
+    background-color: #2a2f3a !important;
+}
+[data-testid="stPopoverBody"] { background-color: #1e222b !important; }
+/* The header kebab ("Main menu": Rerun/Auto rerun/Clear cache/Print/Record
+   screen) is Streamlit's own chrome, rendered in a portal
+   (stMainMenuPopover) separate from every app testid above — same miss as
+   the selectbox/popover portals, just a different Streamlit-owned menu. */
+[data-testid="stMainMenuPopover"] {
+    background-color: #1e222b !important;
+    border-color: #3a3f4b !important;
+}
+[data-testid="stMainMenuPopover"] * { color: #fafafa !important; }
+[data-testid^="stMainMenuItem"]:hover { background-color: #2a2f3a !important; }
+
+
+/* Refreshed Web Harvest and Sources surfaces in dark mode. */
+.lucelec-harvest-hero { background: linear-gradient(135deg, #172b3b 0%, #1e222b 100%) !important; border-color: #31536d !important; }
+.lucelec-harvest-kicker, .lucelec-harvest-scope { color: #85c1e9 !important; }
+.lucelec-harvest-hero h2, .lucelec-harvest-section-head h3, .lucelec-harvest-metric-value,
+.lucelec-harvest-guidance strong, .lucelec-harvest-empty strong, .lucelec-harvest-item-title,
+.lucelec-source-result-source { color: #d6ecff !important; }
+.lucelec-harvest-description, .lucelec-harvest-caption, .lucelec-harvest-card-caption,
+.lucelec-harvest-guidance p, .lucelec-harvest-empty p, .lucelec-harvest-section-count,
+.lucelec-harvest-item-meta, .lucelec-source-result-text { color: #b6c4d1 !important; }
+.lucelec-harvest-metric, .lucelec-harvest-url-panel, .lucelec-source-test-panel,
+.lucelec-harvest-guidance, .lucelec-harvest-empty, .lucelec-source-result { background: #1e222b !important; border-color: #3a5266 !important; }
+.lucelec-harvest-metric-label, .lucelec-source-result-score { color: #85c1e9 !important; }
+.lucelec-harvest-url { background: #182d3d !important; border-left-color: #5dade2 !important; color: #d6ecff !important; }
 """
 
 POLISH_CSS = """
@@ -231,6 +353,10 @@ div[data-testid="stHorizontalBlock"]:has([data-testid="stChatInput"]) {
 .stTabs [data-baseweb="tab"] {
     transition: background-color 150ms ease, border-color 150ms ease;
 }
+
+.parish-badge {
+    border: 1px solid #b0b8c1;
+}
 .stTabs [data-baseweb="tab"] {
     border: 1px solid transparent;
     border-radius: 6px 6px 0 0;
@@ -244,6 +370,175 @@ div[data-testid="stHorizontalBlock"]:has([data-testid="stChatInput"]) {
 }
 [data-testid="stSidebar"] button {
     border: 1px solid #d0d5db;
+}
+
+
+/* Refreshed Web Harvest and Sources surfaces. */
+.lucelec-harvest-hero {
+    background: linear-gradient(135deg, #eef7ff 0%, #f8fbff 100%);
+    border: 1px solid #c7def2;
+    border-radius: 14px;
+    padding: 1.15rem 1.25rem;
+    margin: 0.25rem 0 1rem;
+}
+.lucelec-harvest-kicker {
+    color: #2874a6;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+}
+.lucelec-harvest-hero h2 {
+    color: #1b4f72;
+    margin: 0;
+}
+.lucelec-harvest-description {
+    color: #415466;
+    margin: 0.45rem 0 0;
+    max-width: 58rem;
+}
+.lucelec-harvest-scope {
+    color: #2874a6;
+    font-size: 0.86rem;
+    font-weight: 700;
+    margin-top: 0.8rem;
+}
+.lucelec-harvest-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.7rem;
+    margin: 0.85rem 0 0.65rem;
+}
+.lucelec-harvest-metric {
+    background: #ffffff;
+    border: 1px solid #d7e5f0;
+    border-radius: 10px;
+    padding: 0.8rem 0.9rem;
+    min-width: 0;
+}
+.lucelec-harvest-metric-label {
+    color: #607487;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.lucelec-harvest-metric-value {
+    color: #1b4f72;
+    font-size: 1.45rem;
+    font-weight: 800;
+    margin-top: 0.25rem;
+    overflow-wrap: anywhere;
+}
+.lucelec-harvest-caption,
+.lucelec-harvest-card-caption {
+    color: #607487;
+    font-size: 0.86rem;
+}
+.lucelec-harvest-url-panel,
+.lucelec-source-test-panel {
+    background: #f7fafd;
+    border: 1px solid #d7e5f0;
+    border-radius: 12px;
+    padding: 0.85rem 1rem 0.2rem;
+    margin: 0.7rem 0 1rem;
+}
+.lucelec-harvest-guidance,
+.lucelec-harvest-empty {
+    background: #f8fbff;
+    border: 1px dashed #b8d1e5;
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    margin: 0.8rem 0 1rem;
+}
+.lucelec-harvest-guidance strong,
+.lucelec-harvest-empty strong {
+    color: #1b4f72;
+}
+.lucelec-harvest-guidance p,
+.lucelec-harvest-empty p {
+    color: #526575;
+    margin: 0.25rem 0 0;
+}
+.lucelec-harvest-section-head {
+    align-items: baseline;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+    margin: 1.1rem 0 0.25rem;
+}
+.lucelec-harvest-section-head h3 {
+    color: #1b4f72;
+    margin: 0;
+}
+.lucelec-harvest-section-count {
+    color: #607487;
+    font-size: 0.86rem;
+    white-space: nowrap;
+}
+.lucelec-harvest-item {
+    padding: 0.1rem 0 0.35rem;
+}
+.lucelec-harvest-item-title {
+    color: #1b4f72;
+    font-size: 1rem;
+    font-weight: 800;
+    margin-bottom: 0.3rem;
+    overflow-wrap: anywhere;
+}
+.lucelec-harvest-item-meta {
+    color: #607487;
+    font-size: 0.82rem;
+    margin-bottom: 0.45rem;
+}
+.lucelec-harvest-url {
+    background: #eef5fb;
+    border-left: 3px solid #5dade2;
+    border-radius: 5px;
+    color: #28536f;
+    font-family: monospace;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    padding: 0.45rem 0.6rem;
+    word-break: break-word;
+}
+.lucelec-source-result {
+    background: #f8fbff;
+    border: 1px solid #d7e5f0;
+    border-radius: 10px;
+    margin: 0.65rem 0;
+    padding: 0.75rem 0.9rem;
+}
+.lucelec-source-result-head {
+    align-items: baseline;
+    display: flex;
+    gap: 0.6rem;
+    justify-content: space-between;
+    margin-bottom: 0.45rem;
+}
+.lucelec-source-result-source {
+    color: #1b4f72;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+.lucelec-source-result-score {
+    color: #2874a6;
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.lucelec-source-result-text {
+    color: #415466;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+    .lucelec-harvest-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .lucelec-harvest-section-head { display: block; }
+    .lucelec-harvest-section-count { display: block; margin-top: 0.2rem; }
 }
 """
 
@@ -355,52 +650,42 @@ def _read_key_file(path: str) -> dict:
         return {}                                    # give back nothing rather than crashing
 
 
+def load_dotenv_file(path: Optional[str] = None) -> dict:
+    """Load simple .env assignments without overriding real environment values."""
+    path = path or project_path(ENV_FILE)
+    values = _read_key_file(path)
+    for name, value in values.items():
+        if value and not os.getenv(name):
+            os.environ[name] = value
+    return values
+
 def load_keys() -> dict:
-    """Load keys from the back end into the environment, and report where each came from.
+    """Load keys/settings from environment, .env, or secrets.toml."""
+    tracked = KEY_NAMES + ["LLM_PROVIDER", "ADMIN_USERNAME", "ADMIN_PASSWORD"]
+    preexisting = {name: bool(os.getenv(name)) for name in tracked}
+    from_env = load_dotenv_file(project_path(ENV_FILE))
+    from_secrets = _read_key_file(project_path(SECRETS_FILE))
 
-    Called once at startup. After this runs, os.getenv("GROQ_API_KEY")
-    works everywhere else in the file, no matter which file it came from.
+    for name in KEY_NAMES:
+        if preexisting[name]:
+            _ORIGINS[name] = "environment"
+        elif from_env.get(name):
+            os.environ[name] = from_env[name]
+            _ORIGINS[name] = ENV_FILE
+        elif from_secrets.get(name):
+            os.environ[name] = from_secrets[name]
+            _ORIGINS[name] = SECRETS_FILE
+        else:
+            _ORIGINS[name] = None
 
-    We remember each key's original source in _ORIGINS. Without that, the
-    second time this runs every key would look like it came from the
-    environment — because the first run is what put it there.
-    """
-    from_secrets = _read_key_file(project_path(SECRETS_FILE))   # read .streamlit/secrets.toml
-    from_env     = _read_key_file(project_path(ENV_FILE))       # read .env
+    for setting in ("LLM_PROVIDER", "ADMIN_USERNAME", "ADMIN_PASSWORD"):
+        if not preexisting[setting]:
+            value = from_env.get(setting) or from_secrets.get(setting)
+            if value:
+                os.environ[setting] = value
 
-    for name in KEY_NAMES:                           # check each key name we support
-        if name in _ORIGINS and os.getenv(name):     # already worked this one out earlier?
-            continue                                 # keep the original answer, skip ahead
+    return dict(_ORIGINS)
 
-        if os.getenv(name):                          # already an environment variable?
-            _ORIGINS[name] = "environment" 
-        elif name in from_env and from_env[name]:    # otherwise, in .env?
-            os.environ[name] = from_env[name]        # copy it into the environment
-            _ORIGINS[name] = ENV_FILE              # note that it came from the environment
-        elif name in from_secrets and from_secrets[name]:   # otherwise, in secrets.toml?
-            os.environ[name] = from_secrets[name]    # copy it into the environment
-            _ORIGINS[name] = SECRETS_FILE            # note which file it came from
-        else:                                        # not found anywhere
-            _ORIGINS[name] = None                    # note that this key is missing
-
-    # LLM_PROVIDER is not a key, but it is a setting worth loading the same way.
-    for setting in (
-        "LLM_PROVIDER",
-        "ADMIN_USERNAME",
-        "ADMIN_PASSWORD",
-        "SMTP_HOST",
-        "SMTP_PORT",
-        "SMTP_USERNAME",
-        "SMTP_PASSWORD",
-        "SMTP_FROM_EMAIL",
-        "SMTP_USE_TLS",
-    ):
-        if not os.getenv(setting):                   # only if not already set
-            value = from_secrets.get(setting) or from_env.get(setting)  # look in both files
-            if value:                                # if we found something
-                os.environ[setting] = value          # load it into the environment
-
-    return dict(_ORIGINS)                            # hand back a copy of the where-from report
 
 
 def save_key(name: str, value: str) -> str:
@@ -502,15 +787,61 @@ KEY_SOURCES = load_keys()                            # do it now, once, at impor
 # 2.1 · USER PERSONA (Day 1) — who you are actually building for
 # ---------------------------------------------------------------------
 #   One person, not "customers". If you cannot picture them standing in
-#   front of you, the persona is not finished.
+#   front of you, the persona is not finished. PERSONA is the primary
+#   teaching example (design docs, Blueprint tab); PERSONAS below adds a
+#   few more archetypes so the Blueprint tab shows the range of real
+#   users this bot serves, not just one. None of these are read by the
+#   live prompt builders — see build_prompt()/build_social_prompt() for
+#   why (persona_who is session-scoped, sourced from the sidebar).
 PERSONA = {                                          # a dictionary describing one real user
-    "name":      "Mrs. Augustin",                    # give them a name, e.g. "Ms. Felicien"
-    "who":       "a homeowner in Castries, 45, managing a tight household budget", # e.g. "a shopkeeper in Vieux Fort, 54"
-    "goal":      "to find out if her older appliances are causing her electricity bill to spike", # what they came to the bot to achieve
-    "need":      "a clear, simple breakdown of what specific appliances cost to run per month in EC$", # what they must learn to achieve it
-    "challenge": "the technical jargon like 'kWh' and fuel surcharges make it hard to estimate real costs", # what stops them today
-    "quote":     "I just want to know if buying a new inverter fridge will actually save me money.", # in their own words, from the interview
+    "name":            "Mrs. Augustin",              # give them a name, e.g. "Ms. Felicien"
+    "who":             "a homeowner in Castries, 45, managing a tight household budget", # e.g. "a shopkeeper in Vieux Fort, 54"
+    "goal":            "to find out if her older appliances are causing her electricity bill to spike", # what they came to the bot to achieve
+    "need":            "a clear, simple breakdown of what specific appliances cost to run per month in EC$", # what they must learn to achieve it
+    "challenge":       "the technical jargon like 'kWh' and fuel surcharges make it hard to estimate real costs", # what stops them today
+    "quote":           "I just want to know if buying a new inverter fridge will actually save me money.", # in their own words, from the interview
+    "device_literacy": "low — comfortable with a phone, not with utility jargon", # how much technical vocabulary they already carry in
+    "urgency":         "moderate — worried, but the bill isn't overdue yet", # how much slack they have before this becomes a crisis
 }                                                    # persona ends here
+
+# Secondary archetypes. Same shape as PERSONA, plus a suggested "register"
+# key naming which TONES voice (2.3) fits the person, so a persona and its
+# empathy map stay paired with the tone that should carry it.
+PERSONAS = [
+    {
+        "name":            "Mr. Charles",
+        "who":             "a shopkeeper in Vieux Fort, 54, running a small hardware store",
+        "goal":            "to work out if switching the shop's fridges to inverter models pays for itself before the next tariff review",
+        "need":            "a cost comparison in EC$ per month, not a lecture on watts",
+        "challenge":       "no time between customers to dig through PDFs — needs the answer in one read",
+        "quote":           "Just tell me the number, I've got customers waiting.",
+        "device_literacy": "medium — runs the shop's POS system daily, impatient with anything slower",
+        "urgency":         "high — decision needed before he places this month's stock order",
+        "register":        "formal",
+    },
+    {
+        "name":            "Ms. Joseph",
+        "who":             "a pensioner in Soufriere, 71, living alone on a fixed monthly income",
+        "goal":            "to understand why last month's bill jumped without anything in the house changing",
+        "need":            "reassurance first, then a plain-language explanation — not a wall of tariff terms",
+        "challenge":       "reads slowly on a small phone screen and gets discouraged by long technical replies",
+        "quote":           "I haven't changed anything, so why is it so much this time?",
+        "device_literacy": "very low — first time using a chat-based service of any kind",
+        "urgency":         "high — a fixed income means any unexpected increase is a real problem, not an inconvenience",
+        "register":        "anxious",
+    },
+    {
+        "name":            "Mr. Baptiste",
+        "who":             "settling a late relative's account, 39, handling the estate",
+        "goal":            "to find out what happens to the account and what LUCELEC needs from him",
+        "need":            "clear next steps, delivered gently — this is an emotionally loaded task on top of an admin one",
+        "challenge":       "doesn't know the account holder's login details or account number offhand",
+        "quote":           "I'm trying to sort out my mother's account. I'm not sure what I even need.",
+        "device_literacy": "medium",
+        "urgency":         "moderate — no deadline pressure, but wants this handled and behind him",
+        "register":        "bereaved",
+    },
+]                                                    # PERSONAS ends here
 
 
 # ---------------------------------------------------------------------
@@ -518,13 +849,35 @@ PERSONA = {                                          # a dictionary describing o
 # ---------------------------------------------------------------------
 #   This is not decoration. The "feels" line is what picks the register
 #   in section 2.3, so a wrong empathy map produces a bot with the wrong
-#   voice at the worst possible moment.
+#   voice at the worst possible moment. EMPATHY_MAP pairs with PERSONA;
+#   EMPATHY_MAPS below pairs one-to-one (by list index) with PERSONAS.
 EMPATHY_MAP = {                                      # four sides of one moment
     "says":   "My bill is too high this month. How much does an AC cost to run?", # their actual words to the bot
     "thinks": "I hope I don't have to stop using the AC at night. I really can't afford another high bill.", # what they do not say
     "does":   "Checks the LUCELEC website, gets confused by the tariff sheets, and turns to the chatbot for a quick answer.", # the action they take
     "feels":  "anxious",                             # anxious? rushed? embarrassed? grieving?
 }                                                    # empathy map ends here
+
+EMPATHY_MAPS = [
+    {
+        "says":   "Does the inverter fridge actually pay for itself, or is that just marketing?",
+        "thinks": "I don't want to spend money I don't have to find out I got it wrong.",
+        "does":   "Pulls up the shop's last few bills on his phone between customers and fires off one quick question.",
+        "feels":  "impatient",
+    },
+    {
+        "says":   "Why is my bill so much higher this month? I haven't changed anything.",
+        "thinks": "Did I do something wrong? Can I even afford to fix this?",
+        "does":   "Re-reads the paper bill twice, then asks a neighbour before finally trying the chatbot.",
+        "feels":  "anxious",
+    },
+    {
+        "says":   "I'm trying to sort out my mother's account and I don't know where to start.",
+        "thinks": "I don't want to get this wrong on top of everything else right now.",
+        "does":   "Searches the LUCELEC site for a bereavement or account-transfer page, finds nothing, opens the chat as a last resort.",
+        "feels":  "grieving",
+    },
+]                                                    # EMPATHY_MAPS ends here
 
 
 # ---------------------------------------------------------------------
@@ -541,6 +894,9 @@ TONES = {                                            # dictionary: mood -> a fun
     "formal":     lambda t: f"Dear customer — {t}",   # for businesses and written records
     "anxious":    lambda t: f"Don't worry, we can figure this out together. {t}",# for the worried homeowner
     "bereaved":   lambda t: f"I'm very sorry for your loss. {t}",   # for an account after a death
+    "frustrated": lambda t: f"I hear you, and I want to get this sorted quickly. {t}", # for someone already at their limit
+    "confused":   lambda t: f"No problem — let's take this one step at a time. {t}", # for someone lost in jargon, not upset yet
+    "rushed":     lambda t: f"Quick answer: {t}",     # for someone who explicitly wants brevity, no preamble
 }                                                    # wardrobe ends here
 
 DEFAULT_REGISTER = "warm"                            # used when we cannot tell the mood
@@ -554,6 +910,22 @@ def dress(register: str, text: str) -> str:
     """
     voice = TONES.get(register, TONES[DEFAULT_REGISTER])   # .get() avoids a crash on an unknown mood
     return voice(text)                               # call that register's little function
+
+
+def escape_markdown_dollars(text: str) -> str:
+    """Escape literal "$" so Streamlit's markdown renderer doesn't treat a
+    pair of them as inline LaTeX math delimiters. Every calculator reply
+    quotes 2-3 EC$ amounts, which collide with that by design — without
+    this, a reply with two dollar signs renders as garbled, unparsed
+    Markdown between them (bold markers show up literally, spacing
+    collapses). Display-time only: the raw text stored in chat history and
+    handed to text-to-speech must NOT be escaped — only what actually gets
+    passed to st.markdown/st.caption/st.write_stream.
+    """
+    # FIXED: was unescaped everywhere the reply/source-excerpt text got
+    # rendered, so any answer quoting two or more EC$ amounts (i.e. every
+    # calculator answer) rendered broken.
+    return text.replace("$", "\\$")
 
 # ---------------------------------------------------------------------
 # 2.4 · DIGNITY IN WORDS (Day 4) — jargon translated into plain English
@@ -600,68 +972,39 @@ def translate(msg: str) -> str:
 #
 #   Anything the client has not confirmed stays tagged. Never invent a
 #   rate to fill a gap — an empty cell is honest, a guess is a liability.
-LOCATION_CONTEXT = {
-    "Anse La Raye": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Anse La Raye.",
+LOCATION_CONTEXT = {                                 # dictionary: segment -> its rules
+    "Domestic": {                                    # ordinary households
+        "desk":  "LUCELEC Customer Service",         # where to escalate this person
+        "rate":  "[Confirm with client]",            # EC$ per unit — NOT yet verified
+        "notes": "Household supply. Most appliance questions land here.",
     },
-    "Canaries": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Canaries.",
+    "Commercial": {                                  # shops, offices, small businesses
+        "desk":  "LUCELEC Commercial Desk",
+        "rate":  "[Confirm with client]",
+        "notes": "Different rate structure from Domestic. Confirm before quoting.",
     },
-    "Castries": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Castries.",
+    "Industrial": {                                  # factories and large plant
+        "desk":  "LUCELEC Key Accounts",
+        "rate":  "[Confirm with client]",
+        "notes": "Demand charges may apply. Always escalate pricing questions.",
     },
-    "Choiseul": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Choiseul.",
+    "Hotel / Tourism": {                              # hotels, guesthouses, resorts
+        "desk":  "LUCELEC Commercial Desk",
+        "rate":  "[Confirm with client]",
+        "notes": "Often billed on a commercial-class rate. Confirm the exact tariff class with the client — some large resorts may sit on a separate agreement.",
     },
-    "Dauphin": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Dauphin.",
+    "Government / Public Sector": {                   # government buildings, public institutions
+        "desk":  "LUCELEC Key Accounts",
+        "rate":  "[Confirm with client]",
+        "notes": "May be billed under a separate government-account arrangement. Always escalate — do not assume standard Commercial/Industrial rules apply.",
     },
-    "Dennery": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Dennery.",
+    "Agricultural": {                                 # farms, agro-processing
+        "desk":  "LUCELEC Customer Service",
+        "rate":  "[Confirm with client]",
+        "notes": "Confirm whether a dedicated agricultural rate exists before quoting anything — not yet verified with the client.",
     },
-    "Gros Islet": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Gros Islet.",
-    },
-    "Laborie": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Laborie.",
-    },
-    "Micoud": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Micoud.",
-    },
-    "Praslin": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Praslin.",
-    },
-    "Soufriere": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Soufriere.",
-    },
-    "Vieux Fort": {
-        "desk": "LUCELEC Customer Service",
-        "rate": "[Confirm with client]",
-        "notes": "Customer location/parish: Vieux Fort.",
-    },
-}                                                # rulebook ends here
+    # TODO_students: add the segments YOUR client named in the Day 3 interview.
+}                                                    # rulebook ends here
 
 
 def get_location_context(segment: str):
@@ -690,79 +1033,6 @@ PARISH_INFO = {
     "Soufriere": "Service note: this parish is included in the wider LUCELEC service footprint and may receive local communication updates.",
     "Vieux Fort": "South service note: the company maintains a presence in the south of the island, with contact information specifically listed for a Vieux Fort location. This area is also part of the wider operational network used for local service planning.",
 }
-
-# ---------------------------------------------------------------------
-# MAINTENANCE CALENDAR
-# ---------------------------------------------------------------------
-
-MAINTENANCE_SCHEDULE = [
-    {
-        "location": "Castries",
-        "area": "Carellie and Ravine Chabot",
-        "date": "2026-07-28",
-        "start": "8:00 AM",
-        "end": "4:00 PM",
-        "type": "Scheduled Maintenance",
-        "detail": "Network maintenance is scheduled in the area.",
-    },
-    {
-        "location": "Vieux Fort",
-        "area": "Beanfield",
-        "date": "2026-07-30",
-        "start": "9:00 AM",
-        "end": "1:00 PM",
-        "type": "System Upgrade",
-        "detail": "System upgrades are scheduled in the area.",
-    },
-    {
-        "location": "Gros Islet",
-        "area": "Rodney Bay",
-        "date": "2026-07-31",
-        "start": "8:30 AM",
-        "end": "2:00 PM",
-        "type": "Transformer Maintenance",
-        "detail": "Transformer maintenance is scheduled in the area.",
-    },
-]
-
-
-def get_maintenance_schedule(location: Optional[str] = None) -> list:
-    """Return maintenance entries, optionally filtered by location."""
-    if not location:
-        return list(MAINTENANCE_SCHEDULE)
-
-    target = location.strip().lower()
-    return [
-        item for item in MAINTENANCE_SCHEDULE
-        if item["location"].lower() == target
-    ]
-
-
-def maintenance_calendar_rows(location: Optional[str] = None) -> list:
-    """Prepare maintenance records for display in Streamlit."""
-    from datetime import date
-
-    rows = []
-
-    for item in get_maintenance_schedule(location):
-        try:
-            event_date = date.fromisoformat(item["date"])
-            status = "Upcoming" if event_date >= date.today() else "Completed"
-        except ValueError:
-            status = "Unknown"
-
-        rows.append({
-            "Status": status,
-            "Location": item["location"],
-            "Area": item["area"],
-            "Date": item["date"],
-            "Start": item["start"],
-            "End": item["end"],
-            "Type": item["type"],
-            "Details": item["detail"],
-        })
-
-    return rows
 
 LOCATION_STATUS_DATA = {
     "Anse La Raye": {"status": "UNDER MAINTAINANCE", "detail": "Scheduled maintenance is underway in the area."},
@@ -805,29 +1075,31 @@ def get_location_status(location: str) -> Optional[dict]:
     return None
 
 
-def show_selected_parish_info(location: str) -> None:
-    import streamlit as st
-    """Show parish/location context for the currently selected dropdown value."""
-    if not location:
-        return
-
-    info = PARISH_INFO.get(
-        location,
-        "Local service information is being added for this parish.",
+def parish_tooltip_html(parishes: list[str]) -> str:
+    """Render parish names as hoverable badges with a visible tooltip popup."""
+    badges = []
+    for parish in parishes:
+        text = html.escape(parish)
+        info = html.escape(PARISH_INFO.get(parish, "Local service information is being added for this parish."))
+        badges.append(
+            f'<span class="parish-badge" style="position:relative; display:inline-block; margin:0 6px 6px 0; padding:4px 10px; border:1px solid #cbd5e1; border-radius:999px; background:#f8fafc; color:#0f172a; cursor:help;">{text}<span class="parish-tooltip" style="visibility:hidden; opacity:0; position:absolute; left:50%; bottom:125%; transform:translateX(-50%); z-index:1000; width:240px; max-width:85vw; padding:8px 10px; border-radius:8px; background:#0f172a; color:#ffffff; font-size:0.9rem; line-height:1.4; box-shadow:0 8px 24px rgba(15, 23, 42, 0.2); pointer-events:none; transition:opacity 0.2s ease;">{info}</span></span>'
+        )
+    return (
+        "<style>"
+        ".parish-badge:hover .parish-tooltip { visibility:visible !important; opacity:1 !important; }"
+        ".parish-badge .parish-tooltip { white-space:normal; }"
+        "</style>"
+        "<div style='line-height:1.7;'>" + "".join(badges) + "</div>"
     )
-    st.caption(f"Location information — {location}: {info}")
 
 def get_location_tariff(location: str) -> Optional[dict]:
     """Return the current tariff guidance for a location."""
     if not location:
         return None
-
     text = location.strip().lower()
-
     for name, payload in LOCATION_TARIFF_DATA.items():
         if re.search(rf"\b{re.escape(name.lower())}\b", text):
             return {"location": name, **payload}
-
     return None
 
 def handle_location_status(message: str, register: str, territory: Optional[dict] = None) -> Optional[dict]:
@@ -1013,7 +1285,7 @@ def escalate_message(axis: str, user: dict) -> str:
         "authority":          "That's about your own account, so a person needs to look at it with you.",
         "authority_unverified": "I haven't been able to confirm who you are, so I can't go further here.",
         "register":  "I'm not sure how best to help with this one.",
-        "territory": ("Before I answer that, which territory are you from — "
+        "territory": ("Before I answer that, which kind of customer are you — "
                       + _english_list(list(LOCATION_CONTEXT.keys())) +
                       "? The rules and the rates are different for each, and I'd "
                       "rather ask than guess."),
@@ -1798,6 +2070,40 @@ def build_index(chunks: list) -> dict:
     return {"chunks": chunks, "idf": idf}            # the "index" is the chunks plus these scores
 
 
+# Words customers actually type that never literally appear in the
+# approved source documents, mapped to the vocabulary the documents DO
+# use. retrieve_chunks() is plain TF-IDF keyword overlap with no semantic
+# understanding (see its TODO_students note below), so "create an
+# account" and "new connection" score zero overlap even though they're
+# the same request. This bridges that specific, demonstrated gap without
+# an embeddings model. Keep this table small — only add an entry once
+# you've measured a real mismatch, the same way "account" was added here.
+# Note: "account" also matches existing-customer intents (balance, closing
+# an account, account number on a bill) and will surface new-connection
+# content there too. That's a measured, accepted tradeoff, not an oversight:
+# it fires on the intent that was actually demonstrated broken, and
+# MASTER_PROMPT's "say so if the excerpts don't answer" rule is the backstop
+# for the existing-customer case. Revisit if this becomes a real complaint,
+# or when retrieval moves to embeddings.
+QUERY_SYNONYMS = {
+    "account": ["connection", "application"],
+    "create":  ["application", "applying"],
+}
+
+
+def expand_query_terms(q_terms: list) -> list:
+    """Add each term's known synonyms to the scoring bag, so a customer's
+    wording and a document's wording can overlap even when the exact
+    words differ. A term with no entry in QUERY_SYNONYMS passes through
+    unchanged, and a synonym absent from a given chunk contributes 0 to
+    that chunk's score (see idf.get(t, 0.0) below) — so this is a safe
+    no-op for every query that doesn't hit the table."""
+    expanded = list(q_terms)
+    for t in q_terms:
+        expanded.extend(QUERY_SYNONYMS.get(t, []))
+    return expanded
+
+
 def retrieve_chunks(query: str, index: dict, k: int = TOP_K) -> list:
     """Score every chunk against the question and return only the best k.
 
@@ -1810,6 +2116,7 @@ def retrieve_chunks(query: str, index: dict, k: int = TOP_K) -> list:
     q_terms = tokenize(query)                        # clean up the question into words
     if not q_terms:                                  # nothing searchable left?
         return []                                    # return an empty list
+    q_terms = expand_query_terms(q_terms)             # FIXED: bridge customer-vs-document vocabulary gaps (e.g. "account" -> "connection")
 
     idf = index["idf"]                               # the rarity scores from build_index
     scored = []                                      # will hold (score, chunk) pairs
@@ -1881,84 +2188,254 @@ LANG_CODES = {
     "French Creole (Kwéyòl)": "fr"
 }
 
+PROVIDER_DIAGNOSTIC = ""
+
+_PROVIDER_ALIASES = {
+    "openai": "openai",
+    "open-ai": "openai",
+    "gemini": "gemini",
+    "google": "gemini",
+    "google-gemini": "gemini",
+    "googlegemini": "gemini",
+    "groq": "groq",
+}
+
+
+def normalize_provider_name(value: str) -> str:
+    """Return the canonical provider id used by PROVIDERS."""
+    token = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
+    return _PROVIDER_ALIASES.get(token, token)
+
+
+def refresh_provider_configuration() -> dict:
+    """Reload .env-backed settings before every provider-selection decision."""
+    sources = load_keys()
+    raw = os.getenv("LLM_PROVIDER", "")
+    normalized = normalize_provider_name(raw)
+    if normalized in PROVIDERS and raw != normalized:
+        os.environ["LLM_PROVIDER"] = normalized
+    return sources
+
+
 def provider_model(name: str) -> str:
-    """Which model name to use — the override if there is one, otherwise the default."""
-    p = PROVIDERS[name]                              
-    return os.getenv(p["model_env"], p["model"])     
+    """Return the configured model or this provider's safe default."""
+    canonical = normalize_provider_name(name)
+    p = PROVIDERS[canonical]
+    return os.getenv(p["model_env"], "").strip() or p["model"]
+
 
 def provider_key(name: str) -> str:
-    """Fetch this provider's API key from the environment. Empty string if missing."""
-    return os.getenv(PROVIDERS[name]["key_env"], "").strip()   
+    """Return a provider key without ever logging or displaying it."""
+    canonical = normalize_provider_name(name)
+    return os.getenv(PROVIDERS[canonical]["key_env"], "").strip()
+
+
+def validate_provider(name: str):
+    """Validate provider id and key presence without exposing the key."""
+    canonical = normalize_provider_name(name)
+    if canonical not in PROVIDERS:
+        return False, f"unsupported provider '{canonical or 'empty'}'"
+    provider = PROVIDERS[canonical]
+    if not provider["needs_key"]:
+        return True, ""
+    key = provider_key(canonical)
+    if not key:
+        return False, f"missing {provider['key_env']}"
+    if len(key) < 12 or key.lower() in {"changeme", "your_key_here", "replace_me"}:
+        return False, f"{provider['key_env']} is too short or a placeholder"
+    return True, ""
+
 
 def is_configured(name: str) -> bool:
-    """Is this provider ready to use right now?"""
-    p = PROVIDERS[name]                              
-    if p["needs_key"]:                               
-        return bool(provider_key(name))              
-    return True
+    """Return whether the provider has a usable configured key."""
+    return validate_provider(name)[0]
+
+
+def _redact_provider_error(value) -> str:
+    """Make provider diagnostics safe for logs and the Streamlit UI."""
+    text = str(value or "")
+    for provider in PROVIDERS.values():
+        key = os.getenv(provider["key_env"], "").strip()
+        if key:
+            text = text.replace(key, "<redacted>")
+    text = re.sub(r"(?i)(AIzaSy|gsk_|sk-)[A-Za-z0-9_\-]+", "<redacted>", text)
+    text = re.sub(
+        r"(?i)(api[_-]?key|token|secret|password|authorization)\s*[:=]\s*[^\s,;]+",
+        r"\1=<redacted>",
+        text,
+    )
+    text = " ".join(text.split())
+    return text[:240] or "provider call failed"
+
+
+def _record_provider_failure(name: str, error=None, message: str = "") -> str:
+    """Store and print one concise redacted provider diagnostic."""
+    global PROVIDER_DIAGNOSTIC
+    canonical = normalize_provider_name(name)
+    label = PROVIDERS.get(canonical, {"label": canonical or "provider"})["label"]
+    detail = message or f"{type(error).__name__}: {_redact_provider_error(error)}"
+    diagnostic = f"{label}: {_redact_provider_error(detail)}"
+    PROVIDER_DIAGNOSTIC = diagnostic
+    LAST_CALL["error"] = diagnostic
+    print(f"[provider] {diagnostic}")
+    return diagnostic
+
+
+def _provider_response_text(response) -> str:
+    """Extract text from LangChain responses across provider SDK formats."""
+    content = getattr(response, "content", response)
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                value = block.get("text") or block.get("content") or ""
+            else:
+                value = getattr(block, "text", "")
+            if value:
+                parts.append(str(value))
+        return " ".join(parts).strip()
+    return str(content or "").strip()
+
 
 def provider_status() -> list:
-    """Build the list the sidebar shows: every provider and whether it is ready."""
-    return [{"name": n,                              
-             "label": PROVIDERS[n]["label"],         
-             "model": provider_model(n),             
-             "ready": is_configured(n)}              
-            for n in PROVIDER_CHAIN]                 
+    """Build the provider status list after refreshing runtime configuration."""
+    refresh_provider_configuration()
+    rows = []
+    for name in PROVIDER_CHAIN:
+        ready, diagnostic = validate_provider(name)
+        rows.append({
+            "name": name,
+            "label": PROVIDERS[name]["label"],
+            "model": provider_model(name),
+            "ready": ready,
+            "diagnostic": diagnostic,
+        })
+    return rows
+
 
 def active_chain() -> list:
-    """Decide the order to try providers in. LLM_PROVIDER pins one to the front."""
-    pinned = os.getenv("LLM_PROVIDER", "").strip().lower()   
-    if pinned in PROVIDERS:                          
-        return [pinned] + [n for n in PROVIDER_CHAIN if n != pinned]   
-    return list(PROVIDER_CHAIN)                      
+    """Put a normalized selected provider first, then configured fallbacks."""
+    refresh_provider_configuration()
+    pinned = normalize_provider_name(os.getenv("LLM_PROVIDER", ""))
+    if pinned in PROVIDERS:
+        return [pinned] + [name for name in PROVIDER_CHAIN if name != pinned]
+    return list(PROVIDER_CHAIN)
 
-def test_provider(name: str) -> dict:
-    """A dummy ping for the sidebar test button."""
-    try:                                             
-        return {"ok": True, "provider": name,        
-                "model": provider_model(name), "reply": "Connection OK"}
-    except Exception as e:                           
-        return {"ok": False, "provider": name,       
-                "model": provider_model(name),
-                "reply": f"{type(e).__name__}: {e}"}
 
 def get_llm_for_provider(name: str):
-    """Instantiate a LangChain LLM with tools bound for a specific provider."""
-    if name == "openai" and os.getenv("OPENAI_API_KEY"):
+    """Initialize the correct LangChain client for one validated provider."""
+    refresh_provider_configuration()
+    canonical = normalize_provider_name(name)
+    valid, diagnostic = validate_provider(canonical)
+    if not valid:
+        raise RuntimeError(diagnostic)
+    key = provider_key(canonical)
+
+    if canonical == "openai":
         from langchain_openai import ChatOpenAI
         llm = ChatOpenAI(
-            model=provider_model("openai"), 
+            model=provider_model(canonical),
+            api_key=key,
             temperature=0.2,
-            max_retries=0
+            max_retries=0,
         )
-        return llm.bind_tools([calculator_tool])
-        
-    elif name == "gemini" and os.getenv("GEMINI_API_KEY"):
+    elif canonical == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
-        m_name = provider_model("gemini")
-        # gemini-3.6-flash exists but is not on every key's free tier yet, and
-        # gemini-1.5-* now returns 404 (retired). gemini-3.5-flash is the current
-        # generally-available model, so we fall back to it if a 3.6 id is set.
-        # Override with the GEMINI_MODEL env var once your key has newer access.
-        if "3.6" in m_name:
-            m_name = "gemini-3.5-flash"
         llm = ChatGoogleGenerativeAI(
-            model=m_name, 
+            model=provider_model(canonical),
+            google_api_key=key,
             temperature=0.2,
-            max_retries=0
+            max_retries=0,
         )
-        return llm.bind_tools([calculator_tool])
-
-    elif name == "groq" and os.getenv("GROQ_API_KEY"):
+    elif canonical == "groq":
         from langchain_groq import ChatGroq
         llm = ChatGroq(
-            model=provider_model("groq"),
+            model=provider_model(canonical),
+            groq_api_key=key,
             temperature=0.2,
-            max_retries=0
+            max_retries=0,
         )
-        return llm.bind_tools([calculator_tool])
-        
-    raise RuntimeError(f"Provider '{name}' is not configured or missing an API key.")
+    else:
+        raise RuntimeError(f"unsupported provider '{canonical}'")
+
+    return llm.bind_tools([calculator_tool])
+
+
+def invoke_with_fallback(messages: list, purpose: str = "chat"):
+    """Invoke the live LLM, trying the normalized configured chain in order."""
+    global PROVIDER_DIAGNOSTIC
+    refresh_provider_configuration()
+    raw_selected = os.getenv("LLM_PROVIDER", "").strip()
+    selected = normalize_provider_name(raw_selected)
+    errors = []
+
+    if raw_selected and selected not in PROVIDERS:
+        errors.append(_record_provider_failure(selected, message=f"unsupported provider '{selected or raw_selected}'"))
+
+    for provider in active_chain():
+        valid, diagnostic = validate_provider(provider)
+        if not valid:
+            if provider == selected:
+                errors.append(_record_provider_failure(provider, message=diagnostic))
+            continue
+        try:
+            llm = get_llm_for_provider(provider)
+            response = llm.invoke(messages)
+            fallback_diagnostic = "; ".join(errors) if errors else None
+            LAST_CALL.update({
+                "provider": PROVIDERS[provider]["label"],
+                "model": provider_model(provider),
+                "error": fallback_diagnostic,
+            })
+            if fallback_diagnostic:
+                PROVIDER_DIAGNOSTIC = fallback_diagnostic
+                print(f"[provider] {purpose} fallback succeeded via {PROVIDERS[provider]['label']}: {fallback_diagnostic}")
+            else:
+                PROVIDER_DIAGNOSTIC = ""
+            return provider, response, errors
+        except Exception as error:
+            errors.append(_record_provider_failure(provider, error=error))
+            continue
+
+    LAST_CALL.update({
+        "provider": None,
+        "model": None,
+        "error": "; ".join(errors) or "no configured provider",
+    })
+    if errors:
+        PROVIDER_DIAGNOSTIC = "; ".join(errors)[:240]
+    return None, None, errors
+
+
+def test_provider(name: str) -> dict:
+    """Send a minimal live request and report only a safe status message."""
+    refresh_provider_configuration()
+    canonical = normalize_provider_name(name)
+    if canonical not in PROVIDERS:
+        diagnostic = _record_provider_failure(canonical, message=f"unsupported provider '{canonical or 'empty'}'")
+        return {"ok": False, "provider": canonical, "model": "-", "reply": diagnostic}
+    previous = os.getenv("LLM_PROVIDER", "")
+    os.environ["LLM_PROVIDER"] = canonical
+    try:
+        provider, response, _ = invoke_with_fallback(
+            [HumanMessage(content="Reply with exactly: OK")],
+            purpose="connection test",
+        )
+    finally:
+        if previous:
+            os.environ["LLM_PROVIDER"] = previous
+        else:
+            os.environ.pop("LLM_PROVIDER", None)
+    if response is not None:
+        label = PROVIDERS[provider]["label"]
+        return {"ok": True, "provider": provider, "model": provider_model(provider), "reply": f"Connection OK via {label}"}
+    return {
+        "ok": False,
+        "provider": canonical,
+        "model": provider_model(canonical),
+        "reply": LAST_CALL.get("error") or "no configured provider",
+    }
+
 
 # ---------------------------------------------------------------------
 # SPEECH-TO-TEXT & TEXT-TO-SPEECH (ElevenLabs Integrated)
@@ -2137,12 +2614,25 @@ This prompt is a draft. When the bot gives a poor answer, fix it here first, the
 """
 
 def build_prompt(question: str, hits: list, register: str = DEFAULT_REGISTER,
-                 territory: Optional[dict] = None, excel_context: str = "", language: str = "English") -> str:
-    """Fill in MASTER_PROMPT with blueprint, document chunks, Excel knowledge, and language."""
+                 territory: Optional[dict] = None, excel_context: str = "", language: str = "English",
+                 persona_who: Optional[str] = None) -> str:
+    """Fill in MASTER_PROMPT with blueprint, document chunks, Excel knowledge, and language.
+
+    persona_who comes from THIS session's "who's in front of you" sidebar
+    field — never the Week 1 PERSONA teaching example (that dict is design
+    documentation, not live session data), and never guessed when unknown.
+    """
+    # FIXED: Was PERSONA["who"] — leaked the Week 1 teaching example's fake
+    # name/backstory into every real conversation that never touched the
+    # sidebar field. Now session-scoped, with an explicit anti-guessing
+    # instruction when the session hasn't told us who this is.
+    persona_text = persona_who or (
+        "a LUCELEC customer whose name has not been given — do not guess or invent one"
+    )
     return MASTER_PROMPT.format(
         bot_name=BOT_NAME,
         client=CLIENT,
-        persona=PERSONA["who"],
+        persona=persona_text,
         feeling=EMPATHY_MAP["feels"],
         segment=(territory or {}).get("notes", "unknown"),
         desk=(territory or {}).get("desk", ESCALATION_LINE),
@@ -2158,25 +2648,29 @@ def build_prompt(question: str, hits: list, register: str = DEFAULT_REGISTER,
         confirm_tag=CONFIRM_TAG,
     )
 
-def llm_call(system_prompt: str, user_msg: str) -> str:
-    """Try each configured provider in turn. The first one that answers wins."""
-    errors = []                                      # collect failure messages as we go
-    for name in active_chain():                      # walk the provider list in order
-        if not is_configured(name):                  # no key, or server not running?
-            continue                                 # skip this one, try the next
-        try:                                         # attempt the call
-            text = chat_completion(name, system_prompt, user_msg)   # ask this provider
-            LAST_CALL.update({"provider": PROVIDERS[name]["label"], # remember who answered
-                              "model": provider_model(name),        # and with which model
-                              "error": None})                       # no error this time
-            return text                              # success — hand the answer back
-        except Exception as e:                       # this provider failed
-            errors.append(f"{name}: {type(e).__name__} {e}")   # write down why
-            continue                                 # try the next provider
+def chat_completion(name: str, system_prompt: str, user_msg: str) -> str:
+    """Make one validated live provider call for the legacy helper path."""
+    canonical = normalize_provider_name(name)
+    valid, diagnostic = validate_provider(canonical)
+    if not valid:
+        raise RuntimeError(diagnostic)
+    llm = get_llm_for_provider(canonical)
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_msg),
+    ])
+    return _provider_response_text(response)
 
-    LAST_CALL.update({"provider": None, "model": None,            # nobody answered
-                      "error": "; ".join(errors) or "no provider configured"})
-    raise RuntimeError(LAST_CALL["error"])           # give up; safe_call catches this
+def llm_call(system_prompt: str, user_msg: str) -> str:
+    """Try the configured live providers, then raise for the caller's safe fallback."""
+    _, response, _ = invoke_with_fallback([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_msg),
+    ], purpose="legacy chat")
+    if response is None:
+        raise RuntimeError(LAST_CALL.get("error") or "no configured provider")
+    return _provider_response_text(response)
+
 
 
 _TITLE_STOPWORDS = {
@@ -2246,16 +2740,25 @@ def summarize_chat_title(first_message: str) -> str:
     return _heuristic_chat_title(first_message)
 
 
-def extractive_answer(question: str, hits: list) -> str:
+def extractive_answer(question: str, hits: list, language: str = "English") -> str:
     """The emergency answer used when NO provider works.
 
     It just picks the sentences from the found chunks that share the most
     words with the question. It reads clumsily. That is deliberate: it is
     the baseline a real AI model has to beat, and it means a dead API key
     embarrasses you slightly instead of ending your demo.
+
+    FIXED: the two WRAPPER strings ("not in my documents" / the offline
+    notice) are localized via domain_template() — but the quoted sentences
+    themselves stay English, extracted verbatim from this app's English-
+    only source_documents/*.md. There's no document corpus in the other
+    three languages to extract FROM; translating retrieved text on the
+    fly would need a real translation call, not a template lookup, and is
+    out of scope here. Customers get a localized wrapper around an
+    English quote — an honest partial fix, not a silent full one.
     """
     if not hits:                                     # nothing was retrieved at all
-        return "That isn't in my LUCELEC documents."
+        return domain_template(language, "no_documents")
 
     q_terms = set(tokenize(question))                # the question's words, duplicates removed
     scored = []                                      # will hold (overlap, chunk number, sentence)
@@ -2273,10 +2776,10 @@ def extractive_answer(question: str, hits: list) -> str:
 
     scored.sort(key=lambda x: x[0], reverse=True)    # best overlap first
     if not scored:                                   # nothing matched well enough
-        return "That isn't in my LUCELEC documents."
+        return domain_template(language, "no_documents")
 
     lines = [f"{s} [{i}]" for _, i, s in scored[:3]] # take the top three, tag each with its chunk
-    return "\n\n".join(lines) + "\n\n_(Offline mode — no AI provider configured, so this is the retrieved text as-is.)_"
+    return "\n\n".join(lines) + "\n\n" + domain_template(language, "offline_notice")
 
 
 def safe_call(fn, *args, fallback: str = "") -> str:
@@ -2347,6 +2850,12 @@ def _phrase_in(phrase: str, text: str) -> bool:
     return re.search(rf"\b{re.escape(phrase)}\b", text) is not None
 
 
+# A short filler word tacked onto the front of a real follow-up question
+# must not steal the classification from the question behind it — e.g.
+# "ok what is the first step?" is a domain question, not chitchat.
+LEADING_FILLER = ("ok", "okay", "well", "so", "alright", "right", "yeah", "yep")
+
+
 def classify_intent(message: str) -> str:
     """Decide which lane a message belongs in: "social" or "domain".
 
@@ -2357,17 +2866,29 @@ def classify_intent(message: str) -> str:
     low = message.lower().strip()                    # tidy it up for matching
     words = low.split()                              # split into words to measure length
 
+    # Strip ONE leading filler word, but only when something substantial
+    # follows it. A bare "ok" (or "ok, thanks") must still be social — only
+    # a filler word followed by an actual question gets unwrapped.
+    if len(words) > 1 and words[0].strip(",.!") in LEADING_FILLER:
+        rest = low.split(None, 1)[1]
+        if len(rest.split()) >= 2:                   # enough left to be a real question
+            low = rest
+            words = low.split()
+
     # Any electricity word at all means this is a real question, even if it
     # also says hello. "Hi, how much does an AC cost?" is a domain question.
     domain_words = ["kwh", "bill", "tariff", "rate", "cost", "appliance", "fridge",
                     "electricity", "power", "meter", "watt", "energy", "ac",
                     "air condition", "heater", "solar", "charge", "pay", "unit",
-                    "expensive", "cheap", "save", "much", 
+                    "expensive", "cheap", "save", "much",
                     "calculate", "calc", "estimate", "math",
                     "domestic", "commercial", "industrial", "monthly", "yearly",
                     "monthly cost", "yearly cost", "monthly electricity", "price",
                     "difference", "compare", "between", "southern", "service location",
-                    "vieux fort", "customer service", "technical presence"] # FIXED: Added customer segments and common questions! 
+                    "vieux fort", "customer service", "technical presence",
+                    "register", "registration", "account", "connection", "connect",
+                    "new connection", "sign up", "signup", "apply", "application",
+                    "new customer"] # FIXED: Added registration/new-connection vocabulary so "can you help me register for an account?" routes to domain, not the fact-free social lane.
     if any(_phrase_in(w, low) for w in domain_words):   # anything domain-ish present?
         return "domain"                              # treat it as a real question
 
@@ -2404,19 +2925,135 @@ HARD RULES, no exceptions:
 
 
 # Used when no AI provider is configured, so the bot is still pleasant offline.
-SOCIAL_FALLBACKS = {                                 # intent -> a sensible fixed reply
-    "greeting":   "Hello! I can help you work out what an appliance costs to run, "
-                  "or explain something on your bill. What would you like to know?",
-    "thanks":     "You're very welcome. Anything else you'd like to work out?",
-    "farewell":   "Take care. Come back any time you need to check a running cost.",
-    "howareyou":  "I'm well, thank you for asking. What can I help you with today?",
-    "identity":   "I'm {bot_name}, a computer assistant built for {client} — "
-                  "not a person. I can help you compare what appliances cost to run.",
-    "capability": "I can work out what an appliance costs to run per month or per "
-                  "year, compare two appliances before you buy, and explain the "
-                  "words on your bill in plain language.",
-    "chitchat":   "Understood. Is there an appliance or a bill question I can help with?",
+# FIXED: social_reply()'s own docstring promises "Answer small talk in the
+# user's chosen language" — true for the live-LLM path (build_social_prompt()
+# passes `language` into SOCIAL_PROMPT), but these offline fallback strings
+# were English-only regardless, so a customer with no LLM key configured (or
+# every provider call failing) always got an English reply no matter which
+# UI language they'd picked. Keyed by the same language names UI_LANGUAGES
+# uses, so `SOCIAL_FALLBACKS.get(language, SOCIAL_FALLBACKS["English"])`
+# mirrors t()'s own fallback-to-English pattern.
+SOCIAL_FALLBACKS = {                                 # language -> intent -> a sensible fixed reply
+    "English": {
+        "greeting":   "Hello! I can help you work out what an appliance costs to run, "
+                      "or explain something on your bill. What would you like to know?",
+        "thanks":     "You're very welcome. Anything else you'd like to work out?",
+        "farewell":   "Take care. Come back any time you need to check a running cost.",
+        "howareyou":  "I'm well, thank you for asking. What can I help you with today?",
+        "identity":   "I'm {bot_name}, a computer assistant built for {client} — "
+                      "not a person. I can help you compare what appliances cost to run.",
+        "capability": "I can work out what an appliance costs to run per month or per "
+                      "year, compare two appliances before you buy, and explain the "
+                      "words on your bill in plain language.",
+        "chitchat":   "Understood. Is there an appliance or a bill question I can help with?",
+    },
+    "Spanish": {
+        "greeting":   "¡Hola! Puedo ayudarle a calcular cuánto cuesta usar un electrodoméstico, "
+                      "o explicarle algo de su factura. ¿Qué le gustaría saber?",
+        "thanks":     "Con mucho gusto. ¿Hay algo más que le gustaría calcular?",
+        "farewell":   "Cuídese. Vuelva cuando necesite calcular un costo de consumo.",
+        "howareyou":  "Estoy bien, gracias por preguntar. ¿En qué puedo ayudarle hoy?",
+        "identity":   "Soy {bot_name}, un asistente informático creado para {client} — "
+                      "no soy una persona. Puedo ayudarle a comparar el costo de sus electrodomésticos.",
+        "capability": "Puedo calcular cuánto cuesta usar un electrodoméstico al mes o al año, "
+                      "comparar dos electrodomésticos antes de comprar, y explicarle "
+                      "los términos de su factura en lenguaje sencillo.",
+        "chitchat":   "Entendido. ¿Hay alguna pregunta sobre un electrodoméstico o su factura en la que pueda ayudarle?",
+    },
+    "French": {
+        "greeting":   "Bonjour ! Je peux vous aider à calculer le coût d'utilisation d'un appareil, "
+                      "ou vous expliquer un point de votre facture. Que souhaitez-vous savoir ?",
+        "thanks":     "Avec plaisir. Y a-t-il autre chose que vous aimeriez calculer ?",
+        "farewell":   "Prenez soin de vous. Revenez quand vous voulez vérifier un coût de fonctionnement.",
+        "howareyou":  "Je vais bien, merci de demander. Comment puis-je vous aider aujourd'hui ?",
+        "identity":   "Je suis {bot_name}, un assistant informatique conçu pour {client} — "
+                      "pas une personne. Je peux vous aider à comparer le coût de vos appareils.",
+        "capability": "Je peux calculer le coût d'utilisation d'un appareil par mois ou par "
+                      "an, comparer deux appareils avant l'achat, et expliquer "
+                      "les termes de votre facture en langage simple.",
+        "chitchat":   "Compris. Avez-vous une question sur un appareil ou une facture à laquelle je peux répondre ?",
+    },
+    "French Creole (Kwéyòl)": {
+        "greeting":   "Bonjou! Mwen ka édé'w kalkilé konbyen sa kouté pou fè maché yon aparèy, "
+                      "oswa eksplike'w yon bagay asou bòdwo'w. Ki sa'w vlé konnèt?",
+        "thanks":     "Padkwa. Ni lòt biten ou vlé kalkilé?",
+        "farewell":   "Pran swen'w. Vini tounen chak fwa ou bizwen chèké yon pri fonksyònman.",
+        "howareyou":  "Mwen byen, mèsi pou'w mandé. Ki sa mwen kapab édé'w épi jodi-a?",
+        "identity":   "Mwen sé {bot_name}, an asistan òdinatè ki fèt pou {client} — "
+                      "mwen pa an moun. Mwen ka édé'w konparé pri aparèy.",
+        "capability": "Mwen ka kalkilé konbyen sa kouté pou fè maché yon aparèy chak mwa oswa chak "
+                      "lanné, konparé dé aparèy avan ou achté, é eksplike'w "
+                      "mo asou bòdwo'w an lang senp.",
+        "chitchat":   "Mwen konprann. Ess ni an kesyon asou an aparèy oswa an bòdwo mwen kapab édé'w épi?",
+    },
 }
+
+
+# FIXED: same class of bug and same fix shape as SOCIAL_FALLBACKS above —
+# chatbot()'s phrase-matched instant replies (appliance-cost/compare/
+# tariff/location "template-rule" answers) and extractive_answer()'s two
+# wrapper strings were English-only regardless of UI language, even
+# though these are the domain lane's OWN offline path (no LLM configured
+# in this dev env, so every real appliance/tariff question hits this).
+# The three payback/vampire-power/kwh-year replies keep numbers computed
+# and pre-formatted (e.g. f"{x:.1f}") BEFORE being substituted into the
+# template, so each language only needs to translate the surrounding
+# sentence, not duplicate every f-string's number-format spec.
+DOMAIN_TEMPLATE_REPLIES = {
+    "English": {
+        "appliance_cost_monthly": "I can estimate the running cost by using the appliance wattage and the hours it is used each day. If you share the appliance wattage and how many hours per day you use it, I can calculate the daily, monthly, and yearly cost for you.",
+        "compare_appliances": "I can compare two appliances by looking at their wattage and usage time. The lower-wattage option usually uses less energy, but the total cost also depends on how long it runs each day.",
+        "current_tariff": "I can help explain the current tariff structure for your customer category, but I should not invent a rate. If you need an exact rate, please confirm the latest LUCELEC tariff notice or contact LUCELEC directly.",
+        "southern_location": "For customers in the southern part of the island, LUCELEC maintains a service presence in Vieux Fort. That location is the main southern service location referred to in the local service information.",
+        "payback": "By switching to the 900W inverter model, you would reduce your daily use from {daily} kWh to {daily} kWh less per day. At the current effective rate, you would save about EC${monthly} per month. It would take about {months} months to recover the EC${price} purchase price through energy savings alone.",
+        "vampire_power": "Using your figures, the monthly consumption is about {fridge} kWh for the refrigerator, {bulbs} kWh for the LED bulbs, and {standby} kWh for standby use. That means standby or vampire power makes up about {pct}% of the total monthly usage in this example.",
+        "kwh_year": "If your label shows {annual} kWh/year, that is about {monthly_kwh} kWh per month. At the current effective rate, that works out to about EC${monthly_cost} per month.",
+        "no_documents": "That isn't in my LUCELEC documents.",
+        "offline_notice": "_(Offline mode — no AI provider configured, so this is the retrieved text as-is.)_",
+    },
+    "Spanish": {
+        "appliance_cost_monthly": "Puedo estimar el costo de funcionamiento usando la potencia del electrodoméstico y las horas que se usa cada día. Si me indica la potencia (vatios) y cuántas horas al día lo usa, puedo calcular el costo diario, mensual y anual.",
+        "compare_appliances": "Puedo comparar dos electrodomésticos observando su potencia y tiempo de uso. La opción de menor potencia generalmente consume menos energía, pero el costo total también depende de cuánto tiempo funciona cada día.",
+        "current_tariff": "Puedo ayudarle a explicar la estructura tarifaria actual para su categoría de cliente, pero no debo inventar una tarifa. Si necesita una tarifa exacta, confirme el último aviso de tarifas de LUCELEC o contacte directamente a LUCELEC.",
+        "southern_location": "Para los clientes en la parte sur de la isla, LUCELEC mantiene presencia de servicio en Vieux Fort. Esa ubicación es el principal punto de servicio del sur mencionado en la información local de servicio.",
+        "payback": "Al cambiar al modelo inverter de 900W, reduciría su uso diario de {daily} kWh a {daily} kWh menos por día. A la tarifa efectiva actual, ahorraría aproximadamente EC${monthly} al mes. Tomaría unos {months} meses recuperar el precio de compra de EC${price} solo con el ahorro de energía.",
+        "vampire_power": "Con sus cifras, el consumo mensual es de aproximadamente {fridge} kWh para el refrigerador, {bulbs} kWh para las bombillas LED, y {standby} kWh para el consumo en espera. Eso significa que el consumo fantasma representa aproximadamente el {pct}% del uso mensual total en este ejemplo.",
+        "kwh_year": "Si su etiqueta muestra {annual} kWh/año, eso es aproximadamente {monthly_kwh} kWh al mes. A la tarifa efectiva actual, eso equivale a unos EC${monthly_cost} al mes.",
+        "no_documents": "Eso no está en mis documentos de LUCELEC.",
+        "offline_notice": "_(Modo sin conexión — no hay proveedor de IA configurado, así que este es el texto recuperado tal cual.)_",
+    },
+    "French": {
+        "appliance_cost_monthly": "Je peux estimer le coût de fonctionnement à partir de la puissance de l'appareil et du nombre d'heures d'utilisation par jour. Si vous me donnez la puissance (watts) et le nombre d'heures par jour, je peux calculer le coût journalier, mensuel et annuel.",
+        "compare_appliances": "Je peux comparer deux appareils en fonction de leur puissance et de leur temps d'utilisation. L'option à puissance plus faible consomme généralement moins d'énergie, mais le coût total dépend aussi de la durée d'utilisation quotidienne.",
+        "current_tariff": "Je peux vous aider à expliquer la structure tarifaire actuelle pour votre catégorie de client, mais je ne dois pas inventer un tarif. Si vous avez besoin d'un tarif exact, veuillez confirmer le dernier avis tarifaire de LUCELEC ou contacter LUCELEC directement.",
+        "southern_location": "Pour les clients situés dans le sud de l'île, LUCELEC maintient une présence de service à Vieux Fort. Cet emplacement est le principal point de service du sud mentionné dans les informations de service local.",
+        "payback": "En passant au modèle inverter de 900W, vous réduiriez votre consommation quotidienne de {daily} kWh à {daily} kWh de moins par jour. Au tarif effectif actuel, vous économiseriez environ EC${monthly} par mois. Il faudrait environ {months} mois pour récupérer le prix d'achat de EC${price} uniquement grâce aux économies d'énergie.",
+        "vampire_power": "Avec vos chiffres, la consommation mensuelle est d'environ {fridge} kWh pour le réfrigérateur, {bulbs} kWh pour les ampoules LED, et {standby} kWh pour la veille. Cela signifie que la consommation fantôme représente environ {pct}% de l'utilisation mensuelle totale dans cet exemple.",
+        "kwh_year": "Si votre étiquette indique {annual} kWh/an, cela correspond à environ {monthly_kwh} kWh par mois. Au tarif effectif actuel, cela représente environ EC${monthly_cost} par mois.",
+        "no_documents": "Cela ne figure pas dans mes documents LUCELEC.",
+        "offline_notice": "_(Mode hors ligne — aucun fournisseur d'IA configuré, donc voici le texte récupéré tel quel.)_",
+    },
+    "French Creole (Kwéyòl)": {
+        "appliance_cost_monthly": "Mwen ka estimé pri fonksyònman an an itilizé wat aparèy la é konbyen lè i sèvi chak jou. Si ou di mwen wat aparèy la é konbyen lè pa jou ou sèvi'y, mwen ka kalkilé pri chak jou, chak mwa, é chak lanné.",
+        "compare_appliances": "Mwen ka konparé dé aparèy an gadé wat yo é tan yo sèvi. Aparèy ki ni pli piti wat la souvan sèvi mwens enèji, mé pri total la osi dépann asou konbyen tan i ka maché chak jou.",
+        "current_tariff": "Mwen ka édé eksplike estrikti tarif aktyèl pou kategori kliyan ou-a, mé mwen pa dwèt envanté an tarif. Si ou bizwen an tarif egzat, tanpri konfimé dènyè avi tarif LUCELEC-a oswa kontakté LUCELEC diréktèman.",
+        "southern_location": "Pou kliyan ki nan pati sid lil-la, LUCELEC ni an prézans sèvis Vieux Fort. Kote sa-a sé prensipal kote sèvis sid ki mansyoné nan enfòmasyon sèvis lokal-la.",
+        "payback": "Si ou chanjé pou modèl envèrtè 900W-la, ou ké rédwi itilizasyon chak jou'w di {daily} kWh a {daily} kWh mwens chak jou. Épi tarif aktyèl la, ou ké sové anviwon EC${monthly} chak mwa. I ké pran anviwon {months} mwa pou rékiperé pri acha EC${price} la sèlman épi ékonomi enèji.",
+        "vampire_power": "Épi chif ou-yo, konsòmasyon chak mwa a anviwon {fridge} kWh pou frijidè-a, {bulbs} kWh pou anpoul LED-yo, é {standby} kWh pou itilizasyon an atant. Sa vlé di kouran fantom-la reprézanté anviwon {pct}% di total itilizasyon chak mwa nan égzanp sa-a.",
+        "kwh_year": "Si étikèt ou-a montré {annual} kWh/lanné, sa vlé di anviwon {monthly_kwh} kWh chak mwa. Épi tarif aktyèl la, sa fè anviwon EC${monthly_cost} chak mwa.",
+        "no_documents": "Sa pa nan dokiman LUCELEC mwen yo.",
+        "offline_notice": "_(Mòd òfline — pa ni founisè AI konfiguré, alò sa sé tèks-la jan i yé nan dokiman-an.)_",
+    },
+}
+
+
+def domain_template(language: str, key: str, **kwargs) -> str:
+    """Same fallback-to-English pattern as t()/t_option(). Missing
+    interpolation kwargs would raise KeyError from .format() — every
+    call site below passes exactly what its template needs."""
+    templates = DOMAIN_TEMPLATE_REPLIES.get(language, DOMAIN_TEMPLATE_REPLIES["English"])
+    template = templates.get(key, DOMAIN_TEMPLATE_REPLIES["English"][key])
+    return template.format(**kwargs) if kwargs else template
 
 
 def social_intent_kind(message: str) -> str:
@@ -2428,73 +3065,72 @@ def social_intent_kind(message: str) -> str:
     return "chitchat"                                # a safe general-purpose reply
 
 
-def social_reply(message: str, register: str, language: str = "English") -> dict:
-    """Answer small talk in the user's chosen language."""
-    kind = social_intent_kind(message)
-
-    # FIXED: Added language=language to prompt formatting
-    system = SOCIAL_PROMPT.format(
+def build_social_prompt(persona_name: Optional[str], persona_who: Optional[str], language: str) -> str:
+    """Fill in SOCIAL_PROMPT. Same rule as build_prompt(): persona_name/
+    persona_who come from THIS session's sidebar field, never the Week 1
+    PERSONA teaching example, and never guessed when unknown."""
+    # FIXED: Was PERSONA.get("name"/"who") — same leak as build_prompt(),
+    # in the lane with the LEAST grounding (no documents, so nothing stops
+    # the model running with a fabricated identity once it's been handed one).
+    name = persona_name or "the customer"
+    who = persona_who or (
+        "a LUCELEC customer whose name has not been given — do not guess or invent one"
+    )
+    return SOCIAL_PROMPT.format(
         bot_name=BOT_NAME,
         client=CLIENT,
-        persona_name=PERSONA.get("name", "a customer"),
-        persona_who=PERSONA.get("who", "is a LUCELEC customer"),
+        persona_name=name,
+        persona_who=who,
         language=language
     )
 
-    fallback = SOCIAL_FALLBACKS.get(kind, SOCIAL_FALLBACKS["chitchat"])
+
+def social_reply(message: str, register: str, language: str = "English",
+                persona_name: Optional[str] = None, persona_who: Optional[str] = None) -> dict:
+    """Answer small talk with the live provider chain and a fixed offline fallback."""
+    kind = social_intent_kind(message)
+    system = build_social_prompt(persona_name, persona_who, language)
+    fallbacks_for_language = SOCIAL_FALLBACKS.get(language, SOCIAL_FALLBACKS["English"])
+    fallback = fallbacks_for_language.get(kind, fallbacks_for_language["chitchat"])
     fallback = fallback.format(bot_name=BOT_NAME, client=CLIENT)
 
-    from langchain_core.messages import SystemMessage, HumanMessage
+    provider, response, _ = invoke_with_fallback([
+        SystemMessage(content=system),
+        HumanMessage(content=message),
+    ], purpose="social")
+    if response is not None:
+        reply_text = fallback if getattr(response, "tool_calls", None) else _provider_response_text(response)
+        return {
+            "reply": dress(register, reply_text),
+            "kind": kind,
+            "provider": PROVIDERS[provider]["label"],
+            "model": provider_model(provider),
+        }
 
-    # FIXED: Loop through our providers dynamically!
-    for provider in active_chain():
-        if not is_configured(provider):
-            continue
-        try:
-            llm = get_llm_for_provider(provider) # Uses the new parameterized loader
-            response = llm.invoke([
-                SystemMessage(content=system),
-                HumanMessage(content=message)
-            ])
-            
-            if hasattr(response, 'tool_calls') and response.tool_calls:
-                reply_text = fallback
-            else:
-                if isinstance(response.content, list):
-                    reply_text = " ".join(block.get("text", "") for block in response.content if isinstance(block, dict))
-                else:
-                    reply_text = str(response.content)
-
-            p_label = PROVIDERS[provider]["label"]
-            p_model = provider_model(provider)
-            LAST_CALL.update({"provider": p_label, "model": p_model})
-
-            return {
-                "reply": dress(register, reply_text),
-                "kind": kind,
-                "provider": p_label,
-                "model": p_model
-            }
-        except Exception as e:
-            continue # Try the next provider if this one fails!
-
-    # Offline fallback if all API calls fail (or if the loop finishes without success)
     return {
         "reply": dress(register, fallback),
         "kind": kind,
         "provider": "offline (fixed reply)",
-        "model": "-"
+        "model": "-",
     }
+
 
 # =====================================================================
 # SECTION 8 · THE TOOL — The Appliance Cost Calculator
 # =====================================================================
 DEFAULT_RATE_PER_KWH = 1.00
 DEFAULT_FUEL_SURCHARGE = 0.255
+# FIXED: The customer-facing calculator (calculator_tool, and everything
+# that calls appliance_cost()/compare_appliances() without an explicit
+# rate) was quoting costs using ONLY DEFAULT_RATE_PER_KWH, silently
+# dropping the fuel variation charge — undercounting every quoted cost by
+# about 20%. This is the one place "the real per-kWh rate" is defined;
+# every default below points at it instead of recomputing it inline.
+DEFAULT_EFFECTIVE_RATE = DEFAULT_RATE_PER_KWH + DEFAULT_FUEL_SURCHARGE
 
 
 def appliance_cost(watts: float, hours_per_day: float,
-                   rate_per_kwh: float = DEFAULT_RATE_PER_KWH) -> dict:
+                   rate_per_kwh: float = DEFAULT_EFFECTIVE_RATE) -> dict:
     """Work out what one appliance costs to run per day, month and year."""
     kwh_day = (watts / 1000.0) * hours_per_day
     return {
@@ -2510,7 +3146,7 @@ def appliance_cost(watts: float, hours_per_day: float,
     }
 
 
-def compare_appliances(a: dict, b: dict, rate: float = DEFAULT_RATE_PER_KWH) -> dict:
+def compare_appliances(a: dict, b: dict, rate: float = DEFAULT_EFFECTIVE_RATE) -> dict:
     """Compare two appliances and work out how long the pricier one takes to pay for itself."""
     ca = appliance_cost(a["watts"], a["hours_per_day"], rate)
     cb = appliance_cost(b["watts"], b["hours_per_day"], rate)
@@ -2563,7 +3199,7 @@ def vampire_power_audit(refrigerator_kwh_year: float, led_bulbs: int, led_watts:
     }
 
 
-def kwh_year_to_monthly_cost(kwh_per_year: float, rate_per_kwh: float = DEFAULT_RATE_PER_KWH + DEFAULT_FUEL_SURCHARGE) -> dict:
+def kwh_year_to_monthly_cost(kwh_per_year: float, rate_per_kwh: float = DEFAULT_EFFECTIVE_RATE) -> dict:
     """Convert annual energy-use labels into monthly usage and cost."""
     monthly_kwh = kwh_per_year / 12.0
     monthly_cost = monthly_kwh * rate_per_kwh
@@ -2578,22 +3214,29 @@ def kwh_year_to_monthly_cost(kwh_per_year: float, rate_per_kwh: float = DEFAULT_
 def calculator_tool(watts: float, hours_per_day: float) -> str:
     """Useful for calculating the running cost of an appliance.
     Input the appliance wattage (watts) and the hours used per day.
-    Returns the daily, monthly, and yearly cost in EC$."""
+    Returns the daily, monthly, and yearly cost in EC$, including the
+    fuel variation charge."""
 
     costs = appliance_cost(watts, hours_per_day)
+    # FIXED: Was hardcoding DEFAULT_RATE_PER_KWH here, so the reply text
+    # claimed a rate that excluded the fuel surcharge even once the math
+    # above was fixed to include it. Report the rate that was actually
+    # used, from the same dict the cost figures came from.
     return (f"Calculation successful: Running a {watts}W appliance for {hours_per_day} "
-            f"hours costs EC${costs['cost_month']} per month and EC${costs['cost_year']} per year at a rate of EC${DEFAULT_RATE_PER_KWH}/kWh.")
+            f"hours costs EC${costs['cost_month']} per month and EC${costs['cost_year']} per year at a rate of EC${costs['rate_per_kwh']}/kWh.")
 
 # =====================================================================
 # SECTION 9 · THE PIPELINE — Agentic Tool-Calling Graph
 # =====================================================================
 
 class GraphState(TypedDict):
-    messages: Annotated[list, add_messages] 
-    user: dict 
-    index: dict 
+    messages: Annotated[list, add_messages]
+    user: dict
+    index: dict
     excel_data: list # <--- MUST BE HERE
     language: str # NEW: Tracks the user's chosen language
+    persona_name: Optional[str] # Confirmed customer name for THIS session, or None
+    persona_who: Optional[str] # Confirmed customer description for THIS session, or None
     register: str # The tone to dress the final reply in
     territory: Optional[dict] # Business rules
     hits: list # Document chunks used
@@ -2629,9 +3272,11 @@ def node_social(state: GraphState):
     
     # FIXED: Passes state["language"] into social_reply!
     chat = social_reply(
-        user_msg, 
-        state["register"], 
-        language=state.get("language", "English")
+        user_msg,
+        state["register"],
+        language=state.get("language", "English"),
+        persona_name=state.get("persona_name"),
+        persona_who=state.get("persona_who")
     )
     
     return {
@@ -2659,20 +3304,21 @@ def node_art(state: GraphState):
 
 def chatbot(state: GraphState):
     """Central LLM agent reading RAG chunks, Excel knowledge, and prompt rules."""
-    user_msg = state["messages"][0].content 
+    user_msg = state["messages"][0].content
     low = user_msg.lower()
+    lang = state.get("language", "English")
 
     if any(phrase in low for phrase in ["how much will this appliance cost me to run monthly", "monthly electricity cost", "daily monthly yearly", "cost me to run monthly"]):
-        return {"reply": "I can estimate the running cost by using the appliance wattage and the hours it is used each day. If you share the appliance wattage and how many hours per day you use it, I can calculate the daily, monthly, and yearly cost for you.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+        return {"reply": domain_template(lang, "appliance_cost_monthly"), "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
 
     if any(phrase in low for phrase in ["difference in energy consumption", "difference between these two options", "compare these two", "which uses less energy", "energy consumption between"]):
-        return {"reply": "I can compare two appliances by looking at their wattage and usage time. The lower-wattage option usually uses less energy, but the total cost also depends on how long it runs each day.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+        return {"reply": domain_template(lang, "compare_appliances"), "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
 
     if any(phrase in low for phrase in ["current electricity rate", "current tariff", "what is the current electricity rate", "what is the current tariff"]):
-        return {"reply": "I can help explain the current tariff structure for your customer category, but I should not invent a rate. If you need an exact rate, please confirm the latest LUCELEC tariff notice or contact LUCELEC directly.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+        return {"reply": domain_template(lang, "current_tariff"), "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
 
     if any(phrase in low for phrase in ["primary southern service location", "southern part of the island", "vieux fort", "primary southern service location situated"]):
-        return {"reply": "For customers in the southern part of the island, LUCELEC maintains a service presence in Vieux Fort. That location is the main southern service location referred to in the local service information.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+        return {"reply": domain_template(lang, "southern_location"), "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
 
     if "pay back" in low or "months will it take" in low or "energy savings" in low:
         try:
@@ -2681,7 +3327,12 @@ def chatbot(state: GraphState):
             hours_per_day = 8.0
             price = 1500.0
             result = payback_with_surcharge(old_watts, new_watts, hours_per_day, price)
-            return {"reply": f"By switching to the 900W inverter model, you would reduce your daily use from {result['daily_saving_kwh']:.1f} kWh to {result['daily_saving_kwh']:.1f} kWh less per day. At the current effective rate, you would save about EC${result['monthly_saving']:.2f} per month. It would take about {result['months_to_payback']:.1f} months to recover the EC${price:.2f} purchase price through energy savings alone.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+            reply = domain_template(lang, "payback",
+                                     daily=f"{result['daily_saving_kwh']:.1f}",
+                                     monthly=f"{result['monthly_saving']:.2f}",
+                                     months=f"{result['months_to_payback']:.1f}",
+                                     price=f"{price:.2f}")
+            return {"reply": reply, "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
         except Exception:
             pass
 
@@ -2694,7 +3345,12 @@ def chatbot(state: GraphState):
             standby_watts = 20.0
             standby_hours = 20.0
             result = vampire_power_audit(fridge_kwh_year, led_bulbs, led_watts, led_hours, standby_watts, standby_hours)
-            return {"reply": f"Using your figures, the monthly consumption is about {result['fridge_monthly_kwh']:.2f} kWh for the refrigerator, {result['bulbs_monthly_kwh']:.2f} kWh for the LED bulbs, and {result['standby_monthly_kwh']:.2f} kWh for standby use. That means standby or vampire power makes up about {result['vampire_power_percentage']:.1f}% of the total monthly usage in this example.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+            reply = domain_template(lang, "vampire_power",
+                                     fridge=f"{result['fridge_monthly_kwh']:.2f}",
+                                     bulbs=f"{result['bulbs_monthly_kwh']:.2f}",
+                                     standby=f"{result['standby_monthly_kwh']:.2f}",
+                                     pct=f"{result['vampire_power_percentage']:.1f}")
+            return {"reply": reply, "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
         except Exception:
             pass
 
@@ -2702,7 +3358,11 @@ def chatbot(state: GraphState):
         try:
             annual_kwh = 360.0
             result = kwh_year_to_monthly_cost(annual_kwh)
-            return {"reply": f"If your label shows {annual_kwh:.0f} kWh/year, that is about {result['monthly_kwh']:.2f} kWh per month. At the current effective rate, that works out to about EC${result['monthly_cost']:.2f} per month.", "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
+            reply = domain_template(lang, "kwh_year",
+                                     annual=f"{annual_kwh:.0f}",
+                                     monthly_kwh=f"{result['monthly_kwh']:.2f}",
+                                     monthly_cost=f"{result['monthly_cost']:.2f}")
+            return {"reply": reply, "provider": "template-rule", "model": "-", "intent": "domain", "hits": []}
         except Exception:
             pass
     
@@ -2718,36 +3378,28 @@ def chatbot(state: GraphState):
     ) if excel_records else ""
     
     # 3. Build prompt with Excel context and Language
-    system_prompt = build_prompt(safe_q, hits, state["register"], state["territory"], excel_context=excel_context, language=state["language"])
+    system_prompt = build_prompt(safe_q, hits, state["register"], state["territory"], excel_context=excel_context,
+                                  language=state["language"], persona_who=state.get("persona_who"))
     messages_to_send = [SystemMessage(content=system_prompt)] + state["messages"]
     
-    # 4. Dynamic Fallback Loop
-    errors = []
-    for provider in active_chain():
-        if not is_configured(provider):
-            continue
-        try:
-            llm = get_llm_for_provider(provider)
-            response = llm.invoke(messages_to_send)
-            
-            p_label = PROVIDERS[provider]["label"]
-            p_model = provider_model(provider)
-            LAST_CALL.update({"provider": p_label, "model": p_model})
-            
-            return {
-                "messages": [response], 
-                "hits": hits, 
-                "provider": p_label, 
-                "model": p_model
-            }
-        except Exception as e:
-            errors.append(f"{provider}: {type(e).__name__}")
-            continue
+    # 4. Dynamic live-provider fallback loop
+    provider, response, _ = invoke_with_fallback(messages_to_send, purpose="domain")
+    if response is not None:
+        return {
+            "messages": [response],
+            "hits": hits,
+            "provider": PROVIDERS[provider]["label"],
+            "model": provider_model(provider),
+        }
 
-    text = extractive_answer(safe_q, hits)
+    text = extractive_answer(safe_q, hits, language=lang)
     from langchain_core.messages import AIMessage
-    return {"messages": [AIMessage(content=text)], "hits": hits, "provider": "offline (extractive)", "model": "-"}
-
+    return {
+        "messages": [AIMessage(content=text)],
+        "hits": hits,
+        "provider": "offline (extractive)",
+        "model": "-",
+    }
     # GRACEFUL FALLBACK: if no provider answered, do NOT apologise and give up.
     # Fall back to the extractive answer built from the retrieved chunks, exactly
     # as the pre-LangGraph version did. This is the whole reason the demo works
@@ -2857,6 +3509,23 @@ tool_node = ToolNode([calculator_tool])
 
 def finalize_reply(state: GraphState):
     """Formats the LLM's final text using the Wardrobe."""
+    # FIXED: chatbot()'s 7 "template-rule" instant replies (appliance
+    # cost, compare, current tariff, southern location, payback, vampire
+    # power, kwh/year) set state["reply"] directly and never touch
+    # state["messages"] — but this node unconditionally rebuilt "reply"
+    # from state["messages"][-1] regardless, which for those branches was
+    # still the user's OWN original HumanMessage (chatbot() never
+    # replaced it with an AI message on that path). Net effect: every one
+    # of those 7 replies was silently discarded and replaced with a
+    # dressed-up echo of the user's own question — in every language,
+    # since this node was written. Caught while localizing these replies
+    # for Section 18's tests: the translated text was correct but never
+    # actually reached the customer. should_continue() still routes here
+    # for the tool-call check, so this node still needs to run either
+    # way — it just must not clobber an already-set reply.
+    if state.get("reply"):
+        return {}
+
     last_msg_content = state["messages"][-1].content
     
     # NEW FIX: Some LLMs return content as a list of blocks after a tool call.
@@ -2930,13 +3599,16 @@ bot_app = workflow.compile()
 
 # --- EXECUTION BINDING ---
 
-def classify_and_route(user: dict, message: str, index: dict, excel_data: list = None, language: str = "English") -> dict: 
-    initial_state = { 
-        "messages": [HumanMessage(content=message)], 
-        "user": user, 
-        "index": index, 
-        "excel_data": excel_data or [], 
+def classify_and_route(user: dict, message: str, index: dict, excel_data: list = None, language: str = "English",
+                        persona_name: Optional[str] = None, persona_who: Optional[str] = None) -> dict:
+    initial_state = {
+        "messages": [HumanMessage(content=message)],
+        "user": user,
+        "index": index,
+        "excel_data": excel_data or [],
         "language": language, # NEW: Feed into memory
+        "persona_name": persona_name, # FIXED: Session-scoped, was a module global
+        "persona_who": persona_who,
         "reply": "",
         "hits": [], 
         "escalated": False, 
@@ -2962,9 +3634,10 @@ def classify_and_route(user: dict, message: str, index: dict, excel_data: list =
         "axis": final_state.get("axis", "-"),               # which check stopped it
     }
 
-def answer(question: str, index: dict, user: Optional[dict] = None, excel_data: list = None, language: str = "English") -> dict: 
-    user = user or {"id_verified": True, "mood": DEFAULT_REGISTER, "segment": "Domestic"} 
-    return classify_and_route(user, question, index, excel_data, language)
+def answer(question: str, index: dict, user: Optional[dict] = None, excel_data: list = None, language: str = "English",
+           persona_name: Optional[str] = None, persona_who: Optional[str] = None) -> dict:
+    user = user or {"id_verified": True, "mood": DEFAULT_REGISTER, "segment": "Domestic"}
+    return classify_and_route(user, question, index, excel_data, language, persona_name, persona_who)
 
 # =====================================================================
 # SECTION 10 · THE EVAL SET — how you prove the bot is getting better
@@ -3041,7 +3714,12 @@ def initialize_sidebar_state(state: Optional[dict] = None) -> dict:
     """
     if state is None:
         state = {}
-    state.setdefault("page_state", "customer_view")
+    # FIXED (2026-08-18): a fresh session must open on the customer gate,
+    # not straight into chat — see the "4. VIEW ROUTER" section for the
+    # gate itself. This setdefault ran BEFORE that router's own guard, so
+    # it silently won the race and the router's check for "not yet set"
+    # never actually fired.
+    state.setdefault("page_state", "customer_gate")
     state.setdefault("staff_account", None)
     state.setdefault("ui_language", "English")
     state.setdefault("dark_mode", False)
@@ -3059,6 +3737,11 @@ def initialize_sidebar_state(state: Optional[dict] = None) -> dict:
     state.setdefault("pending_voice_text", "")
     state.setdefault("show_voice_widget", False)
     state.setdefault("show_settings", False)
+    # Who the bot is actually speaking to THIS session, from the "who's in
+    # front of you" sidebar field — never the Week 1 PERSONA teaching
+    # example, and never guessed. None until a staff member confirms a name.
+    state.setdefault("persona_name", None)
+    state.setdefault("persona_who", None)
     return state
 
 
@@ -3116,12 +3799,6 @@ def _users_gitignore_entry() -> None:
             for name in missing:
                 f.write(name + "\n")
 
-
-
-# Login lockout settings. Environment variables allow deployments to tune
-# these values without changing code; the defaults keep local/demo use simple.
-LOGIN_MAX_ATTEMPTS = int(os.getenv("LOGIN_MAX_ATTEMPTS", "5"))
-LOGIN_LOCKOUT_SECONDS = int(os.getenv("LOGIN_LOCKOUT_SECONDS", "300"))
 
 def _seed_users() -> dict:
     """First run, no users.json yet: seed one account from
@@ -3188,55 +3865,6 @@ def authenticate_staff(username: str, password: str) -> Optional[dict]:
     return None
 
 
-
-
-def generate_login_verification_code() -> str:
-    """Create a six-digit verification code for admin login."""
-    return f"{secrets.randbelow(1_000_000):06d}"
-
-
-def send_login_verification_code(email_address: str, code: str) -> tuple[bool, str]:
-    """Send or log the one-time admin login verification code.
-
-    If SMTP settings are configured, the code is emailed. In local/demo
-    environments without SMTP settings, the code is written to the app UI so
-    the flow remains testable without external email infrastructure.
-    """
-    smtp_host = os.getenv("SMTP_HOST")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_username = os.getenv("SMTP_USERNAME")
-    smtp_password = os.getenv("SMTP_PASSWORD")
-    smtp_sender = os.getenv("SMTP_FROM") or smtp_username
-    use_tls = os.getenv("SMTP_USE_TLS", "true").lower() not in {"0", "false", "no"}
-
-    if not smtp_host or not smtp_sender:
-        return False, (
-            "SMTP is not configured, so no email was sent. "
-            f"For this local/demo run, use verification code: {code}"
-        )
-
-    message = EmailMessage()
-    message["Subject"] = "Your LUCELEC admin verification code"
-    message["From"] = smtp_sender
-    message["To"] = email_address
-    message.set_content(
-        "Your LUCELEC admin verification code is "
-        f"{code}. It expires in 10 minutes. If you did not request this code, ignore this email."
-    )
-
-    try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
-            if use_tls:
-                server.starttls()
-            if smtp_username and smtp_password:
-                server.login(smtp_username, smtp_password)
-            server.send_message(message)
-        return True, f"A verification code was sent to {email_address}."
-    except Exception as exc:
-        return False, (
-            "The credentials were correct, but the verification email could not be sent. "
-            f"Email error: {exc}. For this local/demo run, use verification code: {code}"
-        )
 def list_staff_accounts() -> list:
     """All staff accounts, for the admin-only account-management panel."""
     users = _load_users()
@@ -3389,6 +4017,7 @@ def inject_lucelec_loading_screen():
 def streamlit_app():
     import streamlit as st
     import base64
+    refresh_provider_configuration()
     inject_lucelec_loading_screen()
     # 1. PAGE CONFIGURATION (MUST BE FIRST)
     st.set_page_config(page_title=f"{BOT_NAME} · LUCELEC", page_icon="⚡", layout="wide")
@@ -3431,6 +4060,53 @@ def streamlit_app():
             "chat": "Chat", "status": "Location status", "tariffs": "Area tariffs",
             "calc": "Cost calculator", "excel": "Knowledge base", "blueprint": "Blueprint",
             "web": "Web harvest", "sources": "Sources", "eval": "Eval",
+            "web_header": "Harvest from the LUCELEC website",
+            "web_intro": "Fetch a page into the review queue. Nothing is added to the knowledge base until a staff member approves it.",
+            "web_scope_caption": "Staff workflow · review before indexing",
+            "web_url_label": "Page URL",
+            "web_url_placeholder": "https://www.lucelec.com/",
+            "web_url_help": "Use an HTTPS page on an allowed LUCELEC domain.",
+            "web_fetch_btn": "Fetch for review",
+            "web_limits_header": "Harvest guardrails",
+            "web_allowed_domains_metric": "Allowed domains",
+            "web_delay_metric": "Base delay",
+            "web_size_metric": "Max page size",
+            "web_robots_metric": "Robots policy",
+            "web_robots_value": "Obeyed",
+            "web_pending_metric": "Awaiting review",
+            "web_limits_caption": "Requests stay on the allowlist, obey robots.txt, follow redirects safely, and are size-limited.",
+            "web_guidance_header": "Before you fetch",
+            "web_guidance_body": "Use a specific LUCELEC page, then review its source URL and captured text before approving it.",
+            "web_advanced_expander": "Advanced harvest details",
+            "web_allowlist_label": "Allowed hosts",
+            "web_delay_label": "Configured base delay",
+            "web_size_label": "Response size limit",
+            "web_pending_header": "Pending review",
+            "web_pending_count": "{count} page(s) waiting",
+            "web_review_caption": "Approval moves a page into the knowledge base. Rejection removes it from the waiting room.",
+            "web_source_label": "Source URL",
+            "web_saved_file_label": "Saved file",
+            "web_word_count": "{count} words",
+            "web_preview_label": "Preview",
+            "web_reviewer_label": "Reviewer initials",
+            "web_reviewer_help": "Initials are recorded with the approval.",
+            "web_approve_btn": "Approve and index",
+            "web_reject_btn": "Reject",
+            "web_empty_title": "Review queue is clear",
+            "web_empty_body": "Fetched pages will appear here for approval before they can be indexed or quoted.",
+            "web_success_title": "Page captured for review",
+            "web_success_body": "{words} words are waiting for a staff review. The chatbot cannot use this page yet.",
+            "web_error_title": "Page was not captured",
+            "web_error_hint": "Check the URL and the policy message above, then try again if appropriate.",
+            "sources_header": "Sources and retrieval test",
+            "sources_intro": "Check which approved knowledge-base passages would be retrieved for a customer question.",
+            "sources_query_label": "Test question",
+            "sources_query_help": "Use the same kind of wording a customer might use.",
+            "sources_result_count": "{count} passage(s) retrieved",
+            "sources_source_label": "Source",
+            "sources_score_label": "Relevance score",
+            "sources_empty_title": "No matching passages",
+            "sources_empty_body": "Try a broader question or confirm that approved source documents cover this topic.",
             "ask_prompt": "Ask about appliance costs, tariffs or saving energy...",
             "compare_btn": "Compare",
             "chats_header": "Chats", "new_chat_btn": "➕ New chat", "new_chat_title": "New chat",
@@ -3447,6 +4123,20 @@ def streamlit_app():
             "register_default_opt": "(read it from the message)",
             "territory_label": "Territory — which customer category?",
             "territory_default_opt": "(unknown)", "red_line_header": "The Red Line",
+            "register_options": {
+                "warm": "warm", "formal": "formal", "anxious": "anxious",
+                "bereaved": "bereaved", "frustrated": "frustrated",
+                "confused": "confused", "rushed": "rushed",
+            },
+            "territory_options": {
+                "Domestic": "Domestic", "Commercial": "Commercial", "Industrial": "Industrial",
+                "Hotel / Tourism": "Hotel / Tourism",
+                "Government / Public Sector": "Government / Public Sector",
+                "Agricultural": "Agricultural",
+            },
+            "gate_title": "Before we begin", "gate_continue_btn": "Continue",
+            "gate_territory_required_warning": "Please choose which customer category best describes you before continuing.",
+            "staff_login_link": "LUCELEC staff? Log in here",
             "start_over_btn": "Start over", "sources_used": "Sources used",
             "retrieving_spinner": "Retrieving…", "generating_audio_spinner": "Generating audio...",
             "kweyol_elevenlabs_caption": "ElevenLabs doesn't support Kwéyòl — using Google TTS for this reply instead.",
@@ -3456,6 +4146,7 @@ def streamlit_app():
             "mic_not_captured": "Microphone access was not captured. You can type your question manually instead.",
             "status_header": "Location service status",
             "status_caption1": "Check whether a Saint Lucia area is RUNNING, UNDER MAINTAINANCE, or DOWN.",
+            "parish_hover_caption": "Hover over a parish name for quick local reference information.",
             "choose_location_label": "Choose a location", "tariffs_header": "Area tariff overview",
             "domestic_metric": "Domestic", "commercial_metric": "Commercial",
             "calc_warning": "The rate below is a placeholder. Confirm the real LUCELEC rate with the client.",
@@ -3472,6 +4163,53 @@ def streamlit_app():
             "chat": "Chat", "status": "Estado de ubicación", "tariffs": "Tarifas de área",
             "calc": "Calculadora de costos", "excel": "Base de conocimiento", "blueprint": "Plano",
             "web": "Recolección web", "sources": "Fuentes", "eval": "Evaluación",
+            "web_header": "Recopilar del sitio web de LUCELEC",
+            "web_intro": "Obtenga una página en la cola de revisión. Nada se agrega a la base de conocimiento hasta que un miembro del personal lo apruebe.",
+            "web_scope_caption": "Flujo del personal · revisar antes de indexar",
+            "web_url_label": "URL de la página",
+            "web_url_placeholder": "https://www.lucelec.com/",
+            "web_url_help": "Use una página HTTPS de un dominio LUCELEC permitido.",
+            "web_fetch_btn": "Obtener para revisión",
+            "web_limits_header": "Protecciones de recopilación",
+            "web_allowed_domains_metric": "Dominios permitidos",
+            "web_delay_metric": "Demora base",
+            "web_size_metric": "Tamaño máximo",
+            "web_robots_metric": "Política robots",
+            "web_robots_value": "Respetada",
+            "web_pending_metric": "En revisión",
+            "web_limits_caption": "Las solicitudes permanecen en la lista permitida, respetan robots.txt, siguen redirecciones seguras y tienen límite de tamaño.",
+            "web_guidance_header": "Antes de obtener",
+            "web_guidance_body": "Use una página específica de LUCELEC y revise su URL de origen y texto capturado antes de aprobarla.",
+            "web_advanced_expander": "Detalles avanzados de recopilación",
+            "web_allowlist_label": "Hosts permitidos",
+            "web_delay_label": "Demora base configurada",
+            "web_size_label": "Límite de respuesta",
+            "web_pending_header": "Revisión pendiente",
+            "web_pending_count": "{count} página(s) en espera",
+            "web_review_caption": "La aprobación mueve la página a la base de conocimiento. El rechazo la elimina de la sala de espera.",
+            "web_source_label": "URL de origen",
+            "web_saved_file_label": "Archivo guardado",
+            "web_word_count": "{count} palabras",
+            "web_preview_label": "Vista previa",
+            "web_reviewer_label": "Iniciales del revisor",
+            "web_reviewer_help": "Las iniciales se guardan con la aprobación.",
+            "web_approve_btn": "Aprobar e indexar",
+            "web_reject_btn": "Rechazar",
+            "web_empty_title": "La cola de revisión está vacía",
+            "web_empty_body": "Las páginas obtenidas aparecerán aquí para su aprobación antes de indexarse o citarse.",
+            "web_success_title": "Página capturada para revisión",
+            "web_success_body": "{words} palabras esperan la revisión del personal. El chatbot todavía no puede usar esta página.",
+            "web_error_title": "No se capturó la página",
+            "web_error_hint": "Revise la URL y el mensaje de política anterior; luego inténtelo de nuevo si corresponde.",
+            "sources_header": "Fuentes y prueba de recuperación",
+            "sources_intro": "Compruebe qué pasajes aprobados de la base de conocimiento se recuperarían para una pregunta del cliente.",
+            "sources_query_label": "Pregunta de prueba",
+            "sources_query_help": "Use el tipo de redacción que podría usar un cliente.",
+            "sources_result_count": "{count} pasaje(s) recuperado(s)",
+            "sources_source_label": "Fuente",
+            "sources_score_label": "Puntuación de relevancia",
+            "sources_empty_title": "No hay pasajes coincidentes",
+            "sources_empty_body": "Pruebe una pregunta más amplia o confirme que los documentos aprobados cubren este tema.",
             "ask_prompt": "Pregunte sobre costos de electrodomésticos o tarifas...",
             "compare_btn": "Comparar",
             "chats_header": "Chats", "new_chat_btn": "➕ Nuevo chat", "new_chat_title": "Nuevo chat",
@@ -3488,6 +4226,20 @@ def streamlit_app():
             "register_default_opt": "(leerlo del mensaje)",
             "territory_label": "Territorio — ¿qué categoría de cliente?",
             "territory_default_opt": "(desconocido)", "red_line_header": "La línea roja",
+            "register_options": {
+                "warm": "cálido", "formal": "formal", "anxious": "ansioso",
+                "bereaved": "en duelo", "frustrated": "frustrado",
+                "confused": "confundido", "rushed": "apresurado",
+            },
+            "territory_options": {
+                "Domestic": "Doméstico", "Commercial": "Comercial", "Industrial": "Industrial",
+                "Hotel / Tourism": "Hotel / Turismo",
+                "Government / Public Sector": "Gobierno / Sector público",
+                "Agricultural": "Agrícola",
+            },
+            "gate_title": "Antes de empezar", "gate_continue_btn": "Continuar",
+            "gate_territory_required_warning": "Por favor elija la categoría de cliente que mejor le describe antes de continuar.",
+            "staff_login_link": "¿Personal de LUCELEC? Inicie sesión aquí",
             "start_over_btn": "Empezar de nuevo", "sources_used": "Fuentes utilizadas",
             "retrieving_spinner": "Buscando…", "generating_audio_spinner": "Generando audio...",
             "kweyol_elevenlabs_caption": "ElevenLabs no admite Kwéyòl — usando Google TTS para esta respuesta.",
@@ -3497,6 +4249,7 @@ def streamlit_app():
             "mic_not_captured": "No se detectó acceso al micrófono. Puede escribir su pregunta manualmente.",
             "status_header": "Estado del servicio por ubicación",
             "status_caption1": "Verifique si un área de Santa Lucía está EN SERVICIO, EN MANTENIMIENTO o SIN SERVICIO.",
+            "parish_hover_caption": "Pase el cursor sobre el nombre de una parroquia para más información.",
             "choose_location_label": "Elija una ubicación", "tariffs_header": "Resumen de tarifas por área",
             "domestic_metric": "Doméstico", "commercial_metric": "Comercial",
             "calc_warning": "La tarifa de abajo es un valor de referencia. Confirme la tarifa real de LUCELEC con el cliente.",
@@ -3513,6 +4266,53 @@ def streamlit_app():
             "chat": "Discuter", "status": "État de l'emplacement", "tariffs": "Tarifs de zone",
             "calc": "Calculateur de coûts", "excel": "Base de connaissances", "blueprint": "Plan d'action",
             "web": "Collecte Web", "sources": "Sources", "eval": "Évaluation",
+            "web_header": "Collecte depuis le site LUCELEC",
+            "web_intro": "Récupérez une page dans la file de vérification. Rien n'est ajouté à la base de connaissances avant l'approbation d'un membre du personnel.",
+            "web_scope_caption": "Flux du personnel · vérifier avant l'indexation",
+            "web_url_label": "URL de la page",
+            "web_url_placeholder": "https://www.lucelec.com/",
+            "web_url_help": "Utilisez une page HTTPS d'un domaine LUCELEC autorisé.",
+            "web_fetch_btn": "Récupérer pour vérification",
+            "web_limits_header": "Garde-fous de collecte",
+            "web_allowed_domains_metric": "Domaines autorisés",
+            "web_delay_metric": "Délai de base",
+            "web_size_metric": "Taille maximale",
+            "web_robots_metric": "Politique robots",
+            "web_robots_value": "Respectée",
+            "web_pending_metric": "En vérification",
+            "web_limits_caption": "Les requêtes restent sur la liste autorisée, respectent robots.txt, suivent les redirections de façon sûre et sont limitées en taille.",
+            "web_guidance_header": "Avant de récupérer",
+            "web_guidance_body": "Utilisez une page LUCELEC précise, puis vérifiez son URL source et le texte récupéré avant de l'approuver.",
+            "web_advanced_expander": "Détails avancés de collecte",
+            "web_allowlist_label": "Hôtes autorisés",
+            "web_delay_label": "Délai de base configuré",
+            "web_size_label": "Limite de réponse",
+            "web_pending_header": "Vérification en attente",
+            "web_pending_count": "{count} page(s) en attente",
+            "web_review_caption": "L'approbation déplace la page dans la base de connaissances. Le rejet la supprime de la file d'attente.",
+            "web_source_label": "URL source",
+            "web_saved_file_label": "Fichier enregistré",
+            "web_word_count": "{count} mots",
+            "web_preview_label": "Aperçu",
+            "web_reviewer_label": "Initiales du vérificateur",
+            "web_reviewer_help": "Les initiales sont enregistrées avec l'approbation.",
+            "web_approve_btn": "Approuver et indexer",
+            "web_reject_btn": "Rejeter",
+            "web_empty_title": "La file de vérification est vide",
+            "web_empty_body": "Les pages récupérées apparaîtront ici pour approbation avant d'être indexées ou citées.",
+            "web_success_title": "Page capturée pour vérification",
+            "web_success_body": "{words} mots attendent la vérification du personnel. Le chatbot ne peut pas encore utiliser cette page.",
+            "web_error_title": "La page n'a pas été capturée",
+            "web_error_hint": "Vérifiez l'URL et le message de politique ci-dessus, puis réessayez si nécessaire.",
+            "sources_header": "Sources et test de récupération",
+            "sources_intro": "Vérifiez quels passages approuvés de la base de connaissances seraient récupérés pour une question client.",
+            "sources_query_label": "Question de test",
+            "sources_query_help": "Utilisez une formulation comparable à celle d'un client.",
+            "sources_result_count": "{count} passage(s) récupéré(s)",
+            "sources_source_label": "Source",
+            "sources_score_label": "Score de pertinence",
+            "sources_empty_title": "Aucun passage correspondant",
+            "sources_empty_body": "Essayez une question plus générale ou vérifiez que les documents approuvés couvrent ce sujet.",
             "ask_prompt": "Renseignez-vous sur les coûts des appareils ou l'énergie...",
             "compare_btn": "Comparer",
             "chats_header": "Discussions", "new_chat_btn": "➕ Nouvelle discussion",
@@ -3530,6 +4330,20 @@ def streamlit_app():
             "register_default_opt": "(le déduire du message)",
             "territory_label": "Territoire — quelle catégorie de client ?",
             "territory_default_opt": "(inconnu)", "red_line_header": "La ligne rouge",
+            "register_options": {
+                "warm": "chaleureux", "formal": "formel", "anxious": "anxieux",
+                "bereaved": "endeuillé", "frustrated": "frustré",
+                "confused": "confus", "rushed": "pressé",
+            },
+            "territory_options": {
+                "Domestic": "Domestique", "Commercial": "Commercial", "Industrial": "Industriel",
+                "Hotel / Tourism": "Hôtel / Tourisme",
+                "Government / Public Sector": "Gouvernement / Secteur public",
+                "Agricultural": "Agricole",
+            },
+            "gate_title": "Avant de commencer", "gate_continue_btn": "Continuer",
+            "gate_territory_required_warning": "Veuillez choisir la catégorie de client qui vous correspond le mieux avant de continuer.",
+            "staff_login_link": "Personnel de LUCELEC ? Connectez-vous ici",
             "start_over_btn": "Recommencer", "sources_used": "Sources utilisées",
             "retrieving_spinner": "Recherche…", "generating_audio_spinner": "Génération de l'audio...",
             "kweyol_elevenlabs_caption": "ElevenLabs ne prend pas en charge le Kwéyòl — utilisation de Google TTS pour cette réponse.",
@@ -3539,6 +4353,7 @@ def streamlit_app():
             "mic_not_captured": "L'accès au microphone n'a pas été détecté. Vous pouvez taper votre question manuellement.",
             "status_header": "État du service par emplacement",
             "status_caption1": "Vérifiez si une zone de Sainte-Lucie est EN SERVICE, EN MAINTENANCE ou HORS SERVICE.",
+            "parish_hover_caption": "Survolez le nom d'une paroisse pour plus d'informations locales.",
             "choose_location_label": "Choisissez un emplacement", "tariffs_header": "Aperçu des tarifs par zone",
             "domestic_metric": "Domestique", "commercial_metric": "Commercial",
             "calc_warning": "Le tarif ci-dessous est indicatif. Confirmez le vrai tarif LUCELEC avec le client.",
@@ -3555,6 +4370,53 @@ def streamlit_app():
             "chat": "Kozé", "status": "Estati Kote", "tariffs": "Pwi Zòn",
             "calc": "Kalkilatris Pri", "excel": "Konesans Baz", "blueprint": "Plan",
             "web": "Ramase Web", "sources": "Sous", "eval": "Evalyasyon",
+            "web_header": "Ramase enfòmasyon nan sit LUCELEC",
+            "web_intro": "Chèche yon paj mete nan liy pou verifye. Anyen pa antre nan baz konesans lan jouk yon anplwaye apwouve li.",
+            "web_scope_caption": "Travay anplwaye · verifye anvan mete nan endèks",
+            "web_url_label": "URL paj la",
+            "web_url_placeholder": "https://www.lucelec.com/",
+            "web_url_help": "Sèvi ak yon paj HTTPS sou yon domèn LUCELEC ki otorize.",
+            "web_fetch_btn": "Chèche pou verifye",
+            "web_limits_header": "Pwoteksyon ramase a",
+            "web_allowed_domains_metric": "Domèn ki otorize",
+            "web_delay_metric": "Reta baz",
+            "web_size_metric": "Pi gwo gwosè paj",
+            "web_robots_metric": "Règleman robots",
+            "web_robots_value": "Respekte",
+            "web_pending_metric": "Ap tann verifye",
+            "web_limits_caption": "Demann yo rete nan lis otorize a, yo respekte robots.txt, yo swiv redireksyon an sekirite, epi yo gen limit gwosè.",
+            "web_guidance_header": "Avan ou chèche",
+            "web_guidance_body": "Sèvi ak yon paj LUCELEC ki presi, epi verifye URL sous la ak tèks la avan ou apwouve li.",
+            "web_advanced_expander": "Detay avanse sou ramase a",
+            "web_allowlist_label": "Òt ki otorize",
+            "web_delay_label": "Reta baz ki konfigire",
+            "web_size_label": "Limit repons lan",
+            "web_pending_header": "Ap tann verifye",
+            "web_pending_count": "{count} paj ap tann",
+            "web_review_caption": "Apwobasyon mete paj la nan baz konesans lan. Rejte retire li nan liy datant lan.",
+            "web_source_label": "URL sous la",
+            "web_saved_file_label": "Fichye ki sove",
+            "web_word_count": "{count} mo",
+            "web_preview_label": "Ti apèsi",
+            "web_reviewer_label": "Inisyal moun k ap verifye a",
+            "web_reviewer_help": "Inisyal yo ap anrejistre ak apwobasyon an.",
+            "web_approve_btn": "Apwouve epi mete nan endèks",
+            "web_reject_btn": "Rejte",
+            "web_empty_title": "Pa gen anyen nan liy verifye a",
+            "web_empty_body": "Paj ou chèche yo ap parèt la pou apwobasyon avan yo antre nan endèks oswa yo site.",
+            "web_success_title": "Paj la pran pou verifye",
+            "web_success_body": "{words} mo ap tann yon anplwaye verifye yo. Chatbot la poko ka sèvi ak paj sa a.",
+            "web_error_title": "Paj la pa t pran",
+            "web_error_hint": "Tcheke URL la ak mesaj règleman an anlè a, epi eseye ankò si sa bon.",
+            "sources_header": "Sous ak tès rechèch",
+            "sources_intro": "Tcheke ki pasaj apwouve nan baz konesans lan ki t ap soti pou yon kesyon kliyan.",
+            "sources_query_label": "Kesyon tès",
+            "sources_query_help": "Sèvi ak jan yon kliyan ta ka poze kesyon an.",
+            "sources_result_count": "{count} pasaj soti",
+            "sources_source_label": "Sous",
+            "sources_score_label": "Nòt enpòtans",
+            "sources_empty_title": "Pa gen pasaj ki mache",
+            "sources_empty_body": "Eseye yon kesyon ki pi laj oswa verifye dokiman apwouve yo kouvri sijè sa a.",
             "ask_prompt": "Mande sou pri aparèy, tarif oswa ekonomize kouran...",
             "compare_btn": "Konpare",
             "chats_header": "Kozé yo", "new_chat_btn": "➕ Nouvo kozé", "new_chat_title": "Nouvo kozé",
@@ -3571,6 +4433,20 @@ def streamlit_app():
             "register_default_opt": "(li sa nan mesaj la)",
             "territory_label": "Teritwa — ki kategori kliyan?",
             "territory_default_opt": "(pa konnèt)", "red_line_header": "Liy Wouj la",
+            "register_options": {
+                "warm": "cho", "formal": "fòmèl", "anxious": "enkyèt",
+                "bereaved": "an dèy", "frustrated": "fristre",
+                "confused": "konfwèt", "rushed": "prese",
+            },
+            "territory_options": {
+                "Domestic": "Domestik", "Commercial": "Kòmèsyal", "Industrial": "Endistriyèl",
+                "Hotel / Tourism": "Otèl / Touris",
+                "Government / Public Sector": "Gouvènman / Sektè piblik",
+                "Agricultural": "Agrikilti",
+            },
+            "gate_title": "Avan nou kòmanse", "gate_continue_btn": "Kontinye",
+            "gate_territory_required_warning": "Tanpri chwazi kategori kliyan ki dekri ou byen anvan ou kontinye.",
+            "staff_login_link": "Ou se anplwaye LUCELEC? Konekte isit la",
             "start_over_btn": "Rekòmanse", "sources_used": "Sous yo itilize",
             "retrieving_spinner": "K ap chèché…", "generating_audio_spinner": "K ap fè odyo...",
             "kweyol_elevenlabs_caption": "ElevenLabs pa sipòte Kwéyòl — n ap sèvi Google TTS pou repons sa a.",
@@ -3580,6 +4456,7 @@ def streamlit_app():
             "mic_not_captured": "Nou pa t' ka jwenn aksè a mikwo a. Ou ka tape kesyon ou an alamen.",
             "status_header": "Estati sèvis pa zòn",
             "status_caption1": "Gadé si yon zòn Sent Lisi ap MACHÉ, ANMENTNANS, oswa DOWN.",
+            "parish_hover_caption": "Pase sourit sou non yon pawès pou plis enfòmasyon lokal.",
             "choose_location_label": "Chwazi yon kote", "tariffs_header": "Apèsi tarif pa zòn",
             "domestic_metric": "Domestik", "commercial_metric": "Komèsyal",
             "calc_warning": "Tarif anba la se yon egzanp. Konfime tarif reyèl LUCELEC ak kliyan an.",
@@ -3601,6 +4478,35 @@ def streamlit_app():
     def t(key: str) -> str:
         """Helper function to fetch the translated string for the current language."""
         return UI_LANGUAGES.get(st.session_state.ui_language, UI_LANGUAGES["English"]).get(key, key)
+
+    def t_option(mapping_key: str, raw_value: str) -> str:
+        """Translated DISPLAY label for a Register/Territory dropdown
+        option, while the actual returned/stored value stays the raw
+        English key (TONES/LOCATION_CONTEXT dict keys, threaded through
+        check_territory()/build_prompt()/etc — those must never change
+        with the UI language). Falls back to the raw English value if a
+        language's mapping is missing an entry, same as t()'s own
+        fallback-to-key behavior."""
+        mapping = UI_LANGUAGES.get(st.session_state.ui_language, UI_LANGUAGES["English"]).get(mapping_key, {})
+        return mapping.get(raw_value, raw_value)
+
+    # FIXED (2026-08-18): sticky_selectbox only writes the plain
+    # "ui_language" shadow key AFTER st.selectbox() is called inside
+    # render_language_picker() — but t() calls that happen EARLIER in
+    # script order (st.title(t("gate_title")) above the picker, the
+    # picker's own label, anything before render_language_picker() runs)
+    # read the plain key BEFORE that write-back happens this run, so they
+    # showed the previous language for one extra render. Streamlit
+    # already seeds a key-bound widget's session_state entry with the
+    # NEW value at the very start of a rerun triggered by that widget —
+    # before ANY script code runs, including code positioned above the
+    # widget's own call site — so reading the disposable widget key here,
+    # this early, sees the live pick immediately. This is the same
+    # "picker's own label lags one click behind" issue the original
+    # single-key implementation only half dodged (see the git history);
+    # this fixes it for every t() call, not just the picker's label.
+    if "ui_language__widget" in st.session_state:
+        st.session_state.ui_language = st.session_state["ui_language__widget"]
     # --------------------------------------
 
     # 2. ACCESSIBILITY CSS INJECTION — runs every rerun (not gated behind
@@ -3671,113 +4577,222 @@ def streamlit_app():
 
     # 4. VIEW ROUTER
     initialize_sidebar_state(st.session_state)
-    if st.session_state.page_state != 'customer_view' and st.session_state.page_state != 'admin_view' and st.session_state.page_state != 'admin_login':
-        st.session_state.page_state = 'customer_view'
+    # FIXED: 'customer_gate' added as a 4th valid state and made the
+    # fallback default (was 'customer_view') — see the customer-gate block
+    # below for why: real customers used to reach the chat with an assumed
+    # identity (Domestic, verified) before ever being asked anything.
+    _valid_states = ('customer_view', 'admin_view', 'admin_login', 'customer_gate')
+    if st.session_state.page_state not in _valid_states:
+        st.session_state.page_state = 'customer_gate'
 
-    def set_state(new_state): 
-        st.session_state.page_state = new_state 
+    def set_state(new_state):
+        st.session_state.page_state = new_state
 
-    # 5. STAFF LOGIN PORTAL
+    # FIXED (2026-08-18): a Streamlit key-bound widget's session_state
+    # entry is DELETED at the end of any script run that doesn't render
+    # that widget — not preserved indefinitely like a plain dict entry.
+    # The gate screen and Settings are mutually exclusive render sites
+    # (and Settings itself only renders when opened), so every one of
+    # these fields was getting silently wiped back to its default the
+    # first time either site went a run without rendering it — caught
+    # live: Territory reset to "(unknown)" the moment Settings was
+    # opened after completing the gate with "Domestic" selected. Each
+    # sticky_* helper shadows the widget's live value into a SEPARATE,
+    # plain session_state key that Streamlit never touches, and reseeds
+    # the widget's displayed value from that shadow on every render —
+    # the widget key itself (`f"{session_key}__widget"`) is treated as
+    # disposable. This is the same root cause, independently, behind the
+    # pre-existing "ui_language" picker (see below) resetting to English
+    # every time Settings was closed and reopened — not new with the
+    # gate, just far more visible now that identical logic runs every
+    # single gate completion instead of only on a Settings toggle.
+    def sticky_text_input(label: str, placeholder: str, session_key: str) -> str:
+        current = st.session_state.get(session_key, "")
+        value = st.text_input(label, value=current, placeholder=placeholder,
+                               key=f"{session_key}__widget")
+        st.session_state[session_key] = value
+        return value
+
+    def sticky_checkbox(label: str, session_key: str, default: bool = True) -> bool:
+        current = st.session_state.get(session_key, default)
+        value = st.checkbox(label, value=current, key=f"{session_key}__widget")
+        st.session_state[session_key] = value
+        return value
+
+    def sticky_selectbox(label: str, options: list, session_key: str, format_func=str) -> str:
+        current = st.session_state.get(session_key)
+        index = options.index(current) if current in options else 0
+        value = st.selectbox(label, options, index=index, key=f"{session_key}__widget",
+                              format_func=format_func)
+        st.session_state[session_key] = value
+        return value
+
+    def render_language_picker(t):
+        """The language picker itself is the same "widget key gets GC'd
+        the moment a run doesn't render it" bug as identity_* above — this
+        one predates the gate (Settings-only), it just needed the gate's
+        second call site to become reliably visible. `ui_language` stays
+        the plain, never-GC'd key every t() call and the init-time
+        setdefault() already rely on; only the widget's OWN key changes."""
+        sticky_selectbox(t("language_label"), list(UI_LANGUAGES.keys()), "ui_language")
+
+    def render_dark_mode_toggle():
+        """Predates the sticky_* helpers above but is the exact same fix
+        for the exact same Streamlit behavior: a widget's OWN key gets
+        wiped by any run that doesn't draw it (originally caught on the
+        admin-login transition — see git history — now also true of the
+        customer gate, which doesn't render this either). "dark_mode_toggle"
+        is disposable; "dark_mode" is the stable field DARK_MODE_CSS's
+        injection and initialize_sidebar_state's setdefault both read."""
+        dark_mode_now = st.toggle("🌙 Dark mode",
+                                   value=st.session_state.get("dark_mode", False),
+                                   key="dark_mode_toggle")
+        if dark_mode_now != st.session_state.get("dark_mode", False):
+            st.session_state.dark_mode = dark_mode_now
+            st.rerun()
+
+    def render_identity_fields(t, show_authority: bool = True):
+        """The shared "who is in front of you" widgets — Customer Name,
+        [Authority], Register, Territory. Called from BOTH the customer
+        gate screen and the Settings panel — see the sticky_* helpers
+        above for how the values actually survive that gap.
+
+        show_authority=False on the gate screen — a real customer
+        shouldn't self-attest their own identity verification; that
+        checkbox is a staff/testing toggle and stays Settings-only,
+        defaulting to True via current_user_from_identity()'s fallback.
+        """
+        c_name = sticky_text_input(
+            t("customer_name_label"), t("customer_name_placeholder"),
+            "identity_customer_name",
+        )
+        # FIXED (2026-08-15): session-scoped, never a fabricated identity
+        # when blank — see build_prompt()/build_social_prompt().
+        if c_name.strip():
+            st.session_state["persona_name"] = c_name.strip()
+            st.session_state["persona_who"] = f"a customer named {c_name.strip()}"
+        else:
+            st.session_state["persona_name"] = None
+            st.session_state["persona_who"] = None
+
+        if show_authority:
+            sticky_checkbox(t("authority_checkbox"), "identity_verified", default=True)
+
+        # format_func translates the DISPLAYED label only — the value
+        # returned/stored (and everything downstream: check_territory(),
+        # TONES[...], build_prompt()) stays the raw English key. The
+        # placeholder string isn't a real TONES/LOCATION_CONTEXT key, so
+        # t_option()'s fallback-to-raw-value quietly leaves it as the
+        # already-translated register_default_opt/territory_default_opt
+        # text from the list itself.
+        sticky_selectbox(
+            t("register_label"), [t("register_default_opt")] + list(TONES.keys()),
+            "identity_register",
+            format_func=lambda v: t_option("register_options", v),
+        )
+        sticky_selectbox(
+            t("territory_label"), [t("territory_default_opt")] + list(LOCATION_CONTEXT.keys()),
+            "identity_territory",
+            format_func=lambda v: t_option("territory_options", v),
+        )
+
+    def current_user_from_identity() -> dict:
+        """Builds the `user` dict the A.R.T. pipeline reads, straight from
+        the shared identity_* session_state keys render_identity_fields()
+        writes to — one source of truth whether those widgets were filled
+        on the gate screen, edited later in Settings, or (staff/admin,
+        who bypass the gate) never rendered at all this session."""
+        mood = st.session_state.get("identity_register")
+        segment = st.session_state.get("identity_territory")
+        return {
+            "id_verified": st.session_state.get("identity_verified", True),
+            "mood": None if (not mood or mood.startswith("(")) else mood,
+            "segment": None if (not segment or segment.startswith("(")) else segment,
+        }
+
+    # 5. CUSTOMER GATE — first screen a real customer sees. Must be filled
+    # in before the chat UI is reachable; staff bypass it entirely via the
+    # "Staff login" link below, straight to the existing login portal.
+    if st.session_state.page_state == 'customer_gate':
+        st.title(t("gate_title"))
+
+        render_language_picker(t)
+        render_dark_mode_toggle()
+        render_identity_fields(t, show_authority=False)
+
+        if st.button(t("gate_continue_btn")):
+            segment = st.session_state.get("identity_territory", "")
+            if not segment or segment.startswith("("):
+                st.warning(t("gate_territory_required_warning"))
+            else:
+                set_state('customer_view')
+                st.rerun()
+
+        st.divider()
+        if st.button(t("staff_login_link")):
+            set_state('admin_login')
+            st.rerun()
+        return
+
+    # 5b. STAFF LOGIN PORTAL
     if st.session_state.page_state == 'admin_login':
-        st.title("Admin login")
-        st.caption("Enter your staff credentials and email address, then confirm the verification code sent to that email.")
+        st.title("Staff Login")
 
-        # Store the in-progress second factor only in the current Streamlit session.
-        pending_verification = st.session_state.get("pending_admin_verification")
-        code_expires_at = pending_verification.get("expires_at", 0) if pending_verification else 0
-        if pending_verification and time.time() > code_expires_at:
-            st.session_state.pop("pending_admin_verification", None)
-            pending_verification = None
-            st.warning("Your verification code expired. Please sign in again.")
+        # Brute-force throttle: a Streamlit button can be clicked as fast as
+        # a script can drive it, so the login check itself is not a rate
+        # limit. After 5 wrong attempts, lock this session out of the login
+        # form for 60 seconds. Per-session, not global — good enough to
+        # stop naive automated guessing without needing a real backend.
+        LOGIN_MAX_ATTEMPTS = 5
+        LOGIN_LOCKOUT_SECONDS = 60
+        st.session_state.setdefault("login_attempts", 0)
+        st.session_state.setdefault("login_locked_until", 0.0)
 
-        locked_until = st.session_state.get("login_locked_until", 0)
-        if locked_until > time.time():
-            remaining = int(locked_until - time.time())
-            st.error(f"Too many failed login attempts. Try again in {remaining} seconds.")
-            st.button("Back", on_click=set_state, args=('customer_view',))
+        now = time.time()
+        locked = now < st.session_state.login_locked_until
+
+        if locked:
+            wait = int(st.session_state.login_locked_until - now) + 1
+            st.error(f"Too many failed attempts. Try again in {wait}s.")
+            st.button("Back", on_click=set_state, args=('customer_gate',))
             return
 
-        if not pending_verification:
-            with st.form("admin_login_form"):
-                username = st.text_input("Username")
-                email_address = st.text_input("Email address")
-                password = st.text_input("Password", type="password")
-                submitted = st.form_submit_button("Send verification code")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
 
-            if submitted:
-                username = username.strip()
-                email_address = email_address.strip()
-                if not email_address or "@" not in email_address:
-                    st.error("Please enter a valid email address.")
-                else:
-                    account = authenticate_staff(username, password)
-                    if account:
-                        code = generate_login_verification_code()
-                        sent, message = send_login_verification_code(email_address, code)
-                        st.session_state.login_attempts = 0
-                        st.session_state.pending_admin_verification = {
-                            "code": code,
-                            "email": email_address,
-                            "account": account,
-                            "expires_at": time.time() + 600,
-                            "sent": sent,
-                        }
-                        if sent:
-                            st.success(message)
-                        else:
-                            st.warning(message)
-                        st.rerun()
-                    else:
-                        st.session_state.login_attempts += 1
-                        if st.session_state.login_attempts >= LOGIN_MAX_ATTEMPTS:
-                            st.session_state.login_locked_until = time.time() + LOGIN_LOCKOUT_SECONDS
-                            st.session_state.login_attempts = 0
-                            st.rerun()
-                        st.error("Invalid credentials.")
-        else:
-            st.info(f"Enter the six-digit verification code sent to {pending_verification['email']}.")
-            with st.form("admin_verification_form"):
-                verification_code = st.text_input("Verification code", max_chars=6)
-                verify_submitted = st.form_submit_button("Verify and continue")
-
-            if verify_submitted:
-                if verification_code.strip() == pending_verification["code"]:
-                    st.session_state.staff_account = pending_verification["account"]
-                    st.session_state.pop("pending_admin_verification", None)
+        col1, col2 = st.columns([1, 5])
+        with col1:
+            if st.button("Login"):
+                account = authenticate_staff(username, password)
+                if account:
+                    st.session_state.login_attempts = 0
+                    st.session_state.staff_account = account
                     set_state('admin_view')
                     st.rerun()
                 else:
-                    st.error("Incorrect verification code.")
-
-            if st.button("Resend verification code"):
-                code = generate_login_verification_code()
-                sent, message = send_login_verification_code(pending_verification["email"], code)
-                pending_verification.update({
-                    "code": code,
-                    "expires_at": time.time() + 600,
-                    "sent": sent,
-                })
-                st.session_state.pending_admin_verification = pending_verification
-                if sent:
-                    st.success(message)
-                else:
-                    st.warning(message)
-
-            if st.button("Cancel login"):
-                st.session_state.pop("pending_admin_verification", None)
-                st.rerun()
-
-        st.button("Back", on_click=set_state, args=('customer_view',))
+                    st.session_state.login_attempts += 1
+                    if st.session_state.login_attempts >= LOGIN_MAX_ATTEMPTS:
+                        st.session_state.login_locked_until = time.time() + LOGIN_LOCKOUT_SECONDS
+                        st.session_state.login_attempts = 0
+                        st.rerun()
+                    st.error("Invalid credentials.")
+        with col2:
+            st.button("Back", on_click=set_state, args=('customer_gate',))
         return
 
     # 6. APP DATA LOAD
     is_admin = (st.session_state.page_state == 'admin_view')
 
-    # Defaults for the real (non-simulated) customer flow. The Settings
-    # panel below overrides both when a staff member opens it to test as a
-    # simulated customer — but it's collapsed by default, so a real
-    # customer's first chat message must work without ever opening it.
-    user = None
+    # FIXED: was `user = None`, relying on answer()'s own
+    # `user or {"id_verified": True, ..., "segment": "Domestic"}` fallback
+    # for any customer who reached the chat without opening Settings —
+    # which was every customer, silently defaulting to Domestic/verified.
+    # Now every session that reaches this point has EITHER completed the
+    # customer gate (segment/register/name confirmed) OR is staff (who
+    # bypass the gate; Settings still lets them simulate a segment).
+    # Reads straight from the shared identity_* keys; Settings below
+    # re-derives it again after its own copy of the same widgets renders.
+    user = current_user_from_identity()
     sim_language = st.session_state.ui_language
 
     @st.cache_resource                               
@@ -3865,26 +4880,17 @@ def streamlit_app():
 
         if st.session_state.get("show_settings", False):
             with st.expander(t("settings_expander"), expanded=True):
-                # key="ui_language" binds this widget straight to
-                # st.session_state.ui_language: Streamlit syncs the new pick
-                # into session_state BEFORE this script body runs, so
-                # t("language_label") below sees the new language immediately.
-                # A manual `st.session_state.ui_language = st.selectbox(...)`
-                # reassignment reads the OLD language for the label argument
-                # (evaluated before the assignment lands), so the picker's
-                # own label always lagged one click behind — every other
-                # translated element updates fine since it's downstream of
-                # that same assignment.
-                st.selectbox(
-                    t("language_label"),
-                    list(UI_LANGUAGES.keys()),
-                    index=list(UI_LANGUAGES.keys()).index(st.session_state.ui_language),
-                    key="ui_language"
-                )
+                # render_language_picker() writes st.session_state.ui_language
+                # (the plain, never-GC'd shadow key) before this line runs,
+                # so t("language_label") below already sees the new pick —
+                # same immediate-reactivity guarantee the old inline call
+                # had, now via sticky_selectbox() instead of a bare widget
+                # key directly (see the sticky_* helpers for why that changed).
+                render_language_picker(t)
                 sim_language = st.session_state.ui_language
 
                 st.subheader(t("accessibility_header"))
-                st.toggle("🌙 Dark mode", key="dark_mode")
+                render_dark_mode_toggle()
                 a11y_state = st.session_state.accessibility_settings
                 a11y_state["tts"] = st.checkbox(t("tts_checkbox"), value=a11y_state.get("tts", False))
 
@@ -3946,6 +4952,8 @@ def streamlit_app():
                     if st.button("Test connection"):
                         r = test_provider(choice)
                         (st.success if r["ok"] else st.error)(f"{r['model']} → {r['reply']}")
+                    if LAST_CALL.get("error"):
+                        st.caption(f"Provider diagnostic: {LAST_CALL['error']}")
 
                     with st.expander("🔑 API keys"):
                         for row in key_report():
@@ -3970,24 +4978,12 @@ def streamlit_app():
 
                 st.divider()
                 st.subheader(t("user_in_front_header"))
-                c_name = st.text_input(t("customer_name_label"), placeholder=t("customer_name_placeholder"))
-
-                if c_name.strip():
-                    PERSONA["name"] = c_name.strip()
-                    PERSONA["who"] = f"a customer named {c_name.strip()}"
-                else:
-                    PERSONA["name"] = "a customer"
-                    PERSONA["who"] = "a LUCELEC customer"
-
-                sim_verified = st.checkbox(t("authority_checkbox"), value=True)
-                sim_mood = st.selectbox(t("register_label"), [t("register_default_opt")] + list(TONES.keys()))
-                sim_segment = st.selectbox(t("territory_label"), [t("territory_default_opt")] + list(LOCATION_CONTEXT.keys()))
-
-                user = {
-                    "id_verified": sim_verified,
-                    "mood":    None if sim_mood.startswith("(") else sim_mood,
-                    "segment": None if sim_segment.startswith("(") else sim_segment,
-                }
+                # Same widgets (and keys) as the customer gate screen — see
+                # render_identity_fields()'s docstring. Lets a customer who
+                # already passed the gate correct a typo or change category
+                # mid-session, and lets staff still use this as a simulator.
+                render_identity_fields(t)
+                user = current_user_from_identity()
 
                 st.divider()
                 st.subheader(t("red_line_header"))
@@ -4014,7 +5010,10 @@ def streamlit_app():
             with account_action_col:
                 if st.button("Log out", use_container_width=True, key="account_logout_btn"):
                     st.session_state.staff_account = None
-                    set_state('customer_view')
+                    # Back to the gate, not straight to chat — whoever is
+                    # at the keyboard after a staff logout may not be the
+                    # same person the identity fields were last set for.
+                    set_state('customer_gate')
                     st.rerun()
         else:
             with account_info_col:
@@ -4066,12 +5065,12 @@ def streamlit_app():
             for m in st.session_state.messages:
                 msg_avatar = bot_avatar if m["role"] == "assistant" else None
                 with st.chat_message(m["role"], avatar=msg_avatar):
-                    st.markdown(m["content"])
+                    st.markdown(escape_markdown_dollars(m["content"]))
                     if m.get("hits"):
                         with st.expander(t("sources_used")):
                             for i, h in enumerate(m["hits"], 1):
                                 st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")
-                                st.caption(h["text"])
+                                st.caption(escape_markdown_dollars(h["text"]))
 
         if "pending_voice_text" not in st.session_state:
             st.session_state.pending_voice_text = ""
@@ -4114,9 +5113,11 @@ def streamlit_app():
                         # scores them against THIS question and only the relevant
                         # bits get cited — not the whole document dumped every time.
                         active_index = build_index(index["chunks"] + upload_chunks) if upload_chunks else index
-                        out = answer(q, active_index, user, excel_data=excel_row_records, language=sim_language)
+                        out = answer(q, active_index, user, excel_data=excel_row_records, language=sim_language,
+                                     persona_name=st.session_state.get("persona_name"),
+                                     persona_who=st.session_state.get("persona_who"))
 
-                    st.write_stream(_stream_words(out["reply"]))
+                    st.write_stream(_stream_words(escape_markdown_dollars(out["reply"])))
 
                     # --- UPDATED: TTS Generation with Engine Router ---
                     if st.session_state.accessibility_settings.get("tts"):
@@ -4158,7 +5159,7 @@ def streamlit_app():
                         with st.expander(t("sources_used")):
                             for i, h in enumerate(out["hits"], 1):
                                 st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")
-                                st.caption(h["text"])
+                                st.caption(escape_markdown_dollars(h["text"]))
 
             # Save assistant reply to history
             st.session_state.messages.append(
@@ -4211,189 +5212,93 @@ def streamlit_app():
             st.button("🎙️", on_click=toggle_voice_widget, use_container_width=True)
 
     # ---------- TAB 2: Location Status ----------
-# ---------- TAB 2: Location Status ----------
     with tab_status:
         st.subheader(t("status_header"))
         st.caption(t("status_caption1"))
+        st.caption(t("parish_hover_caption"))
+        st.markdown(parish_tooltip_html(list(LOCATION_STATUS_DATA.keys())), unsafe_allow_html=True)
 
-        # -------------------------------------------------------------
-        # LOCATION SELECTOR
-        # -------------------------------------------------------------
-        selected_location = st.selectbox(
-            t("choose_location_label"),
-            list(LOCATION_STATUS_DATA.keys()),
-            key="loc_status_select"
-        )
-        show_selected_parish_info(selected_location)
-
+        selected_location = st.selectbox(t("choose_location_label"), list(LOCATION_STATUS_DATA.keys()), key="loc_status_select")
         status = get_location_status(selected_location)
 
-        # -------------------------------------------------------------
-        # CURRENT LOCATION STATUS
-        # -------------------------------------------------------------
         if status:
-            st.markdown("### Current service status")
+            if status["status"] == "RUNNING": st.success(f"{status['location']} — {status['status']}")
+            elif status["status"] == "UNDER MAINTAINANCE": st.warning(f"{status['location']} — {status['status']}")
+            else: st.error(f"{status['location']} — {status['status']}")
+            st.write(status["detail"])
 
-            status_value = status["status"]
-
-            if status_value == "RUNNING":
-                st.success(
-                    f"🟢 **{status['location']} — RUNNING**"
-                )
-            elif status_value == "UNDER MAINTAINANCE":
-                st.warning(
-                    f"🟡 **{status['location']} — UNDER MAINTAINANCE**"
-                )
-            else:
-                st.error(
-                    f"🔴 **{status['location']} — DOWN**"
-                )
-
-            st.info(status["detail"])
-
-        # -------------------------------------------------------------
-        # MAINTENANCE / OUTAGE INFORMATION
-        # -------------------------------------------------------------
-        st.divider()
-        st.markdown("### 📅 Maintenance & service notices")
-
-        location_notices = []
-
-        # Pull scheduled maintenance entries for the selected location.
-        for maintenance in MAINTENANCE_SCHEDULE:
-            if maintenance["location"].lower() == selected_location.lower():
-                location_notices.append(maintenance)
-
-        # Display notices for this location.
-        if location_notices:
-            from datetime import date
-
-            for notice in location_notices:
-                try:
-                    event_date = date.fromisoformat(notice["date"])
-                    today = date.today()
-
-                    if event_date >= today:
-                        timing_label = "Upcoming"
-                    else:
-                        timing_label = "Completed"
-                except ValueError:
-                    timing_label = "Scheduled"
-
-                with st.container(border=True):
-                    c1, c2 = st.columns([3, 1])
-
-                    with c1:
-                        st.markdown(
-                            f"**{notice['type']} — {notice['area']}**"
-                        )
-                        st.write(notice["detail"])
-                        st.caption(
-                            f"{notice['date']} · "
-                            f"{notice['start']}–{notice['end']}"
-                        )
-
-                    with c2:
-                        if timing_label == "Upcoming":
-                            st.info("Upcoming")
-                        elif timing_label == "Completed":
-                            st.caption("Completed")
-                        else:
-                            st.caption(timing_label)
-
-        else:
-            st.success(
-                f"No scheduled maintenance notices are currently recorded "
-                f"for {selected_location}."
-            )
-
-        # -------------------------------------------------------------
-        # ALL-LOCATION OVERVIEW
-        # -------------------------------------------------------------
-        st.divider()
-        st.markdown("### 🗺️ All location statuses")
-
-        overview_rows = []
-
-        for location_name, location_data in LOCATION_STATUS_DATA.items():
-            maintenance_count = sum(
-                1
-                for item in MAINTENANCE_SCHEDULE
-                if item["location"].lower() == location_name.lower()
-            )
-
-            overview_rows.append({
-                "Location": location_name,
-                "Status": location_data["status"],
-                "Detail": location_data["detail"],
-                "Scheduled Notices": maintenance_count,
-            })
-
-        st.dataframe(
-            overview_rows,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        # -------------------------------------------------------------
-        # QUICK STATUS SUMMARY
-        # -------------------------------------------------------------
-        st.divider()
-        st.markdown("### 📊 Status summary")
-
-        running_count = sum(
-            1
-            for item in LOCATION_STATUS_DATA.values()
-            if item["status"] == "RUNNING"
-        )
-
-        maintenance_count = sum(
-            1
-            for item in LOCATION_STATUS_DATA.values()
-            if item["status"] == "UNDER MAINTAINANCE"
-        )
-
-        down_count = sum(
-            1
-            for item in LOCATION_STATUS_DATA.values()
-            if item["status"] == "DOWN"
-        )
-
-        c1, c2, c3 = st.columns(3)
-
-        c1.metric("🟢 Running", running_count)
-        c2.metric("🟡 Maintenance", maintenance_count)
-        c3.metric("🔴 Down", down_count)
-
-        # -------------------------------------------------------------
-        # ADMIN NOTE
-        # -------------------------------------------------------------
+        # ---- Admin-only: track the live outage/status page on LUCELEC's website ----
+        # Same rule as the tariffs tab: the statuses above stay hard-coded
+        # until a human explicitly approves fresh text — a customer told
+        # "RUNNING" based on an unverified scrape is worse than no answer.
+        # This shares the SAME pending_review/ queue as the tariff tracker
+        # and the Web harvest tab — approving one item here also clears it
+        # from those tabs' lists, since it is genuinely the same queue.
         if is_admin:
             st.divider()
-
-            with st.expander("🔒 Admin — location data"):
+            with st.expander("🔒 Admin — track the live outage/status page"):
                 st.caption(
-                    "The statuses and maintenance notices shown above come "
-                    "from the configured location data. Update the data "
-                    "structures in the source code or connect them to the "
-                    "approved LUCELEC notice workflow before using them as "
-                    "live customer information."
+                    "Fetches the page into the waiting room only. The chatbot "
+                    "never uses this text until you review and approve it below."
+                )
+                status_url = st.text_input(
+                    "Status page address", LUCELEC_STATUS_URL, key="status_track_url"
                 )
 
-                st.write("Configured locations:", len(LOCATION_STATUS_DATA))
-                st.write("Scheduled maintenance notices:", len(MAINTENANCE_SCHEDULE))
+                # Auto-refreshes on a cooldown instead of relying on someone
+                # to remember to click the button below. Still only reaches
+                # the waiting room — the approval step is unchanged.
+                auto_result = auto_harvest_if_due(status_url)
+                if auto_result.get("fetched"):
+                    if auto_result.get("ok", True):
+                        st.success(f"Auto-fetched {auto_result['words']} words — awaiting approval below.")
+                    else:
+                        st.warning(f"Auto-fetch failed: {auto_result.get('error', 'unknown error')}")
+                if auto_result.get("last_checked"):
+                    st.caption(f"Auto-checks every {AUTO_FETCH_INTERVAL_HOURS}h · last checked: {auto_result['last_checked']}")
 
-                if st.button(
-                    "Refresh status display",
-                    key="refresh_location_status"
-                ):
-                    st.rerun()
+                if st.button("Check LUCELEC site for updates now", key="status_track_fetch"):
+                    with st.spinner("Downloading…"):
+                        fetch_result = harvest(status_url)
+                    if fetch_result["ok"]:
+                        st.success(f"Fetched {fetch_result['words']} words — awaiting approval below.")
+                        # Reset the cooldown so the next automatic check
+                        # doesn't immediately re-fetch what we just got by hand.
+                        from datetime import datetime, timezone
+                        _save_auto_fetch_state({**_load_auto_fetch_state(), status_url: datetime.now(timezone.utc).isoformat()})
+                    else:
+                        st.error(fetch_result["error"])
+
+                pending_rows = list_pending()
+                if not pending_rows:
+                    st.caption("Nothing waiting for review right now.")
+                for row in pending_rows:
+                    with st.container(border=True):
+                        st.markdown(f"**{row['file']}** — {row['words']} words")
+                        st.caption(f"Source: {row['url']}")
+                        st.text(row["preview"])   # plain text only — never render fetched text as HTML
+                        a1, a2, a3 = st.columns([2, 1, 1])
+                        initials = a1.text_input(
+                            "Your initials to approve", key=f"status_initials_{row['file']}"
+                        )
+                        if a2.button("Approve", key=f"status_approve_{row['file']}"):
+                            approve_result = approve_harvest(row["file"], initials)
+                            if approve_result["ok"]:
+                                st.cache_resource.clear()   # so the chatbot picks it up immediately
+                                st.success(f"Approved by {approve_result['by']} — now in the knowledge base.")
+                                st.rerun()
+                            else:
+                                st.error(approve_result["error"])
+                        if a3.button("Reject", key=f"status_reject_{row['file']}"):
+                            reject_harvest(row["file"])
+                            st.rerun()
 
     # ---------- TAB 3: Area Tariffs ----------
     with tab_tariffs:
         st.subheader(t("tariffs_header"))
+        st.caption(t("parish_hover_caption"))
+        st.markdown(parish_tooltip_html(list(LOCATION_TARIFF_DATA.keys())), unsafe_allow_html=True)
         tariff_location = st.selectbox(t("choose_location_label"), list(LOCATION_TARIFF_DATA.keys()), key="loc_tariff_select")
-        show_selected_parish_info(tariff_location)
         tariff = get_location_tariff(tariff_location)
 
         if tariff:
@@ -4454,7 +5359,7 @@ def streamlit_app():
     # ---------- TAB 4: Calculator ----------
     with tab_calc:
         st.warning(t("calc_warning"))
-        rate = st.number_input(t("rate_label"), value=float(DEFAULT_RATE_PER_KWH), min_value=0.0, step=0.05)
+        rate = st.number_input(t("rate_label"), value=float(DEFAULT_EFFECTIVE_RATE), min_value=0.0, step=0.05)  # FIXED: was the bare rate, missing the fuel surcharge — see calculator_tool
 
         c1, c2 = st.columns(2)
         with c1:
@@ -4492,35 +5397,224 @@ def streamlit_app():
     # (handle_combined_file_uploads()) — the standalone Excel tab is retired.
     if is_admin:
         with tab_blueprint:
-            b1, b2 = st.columns(2)                       
-            with b1:                                     
-                st.subheader("Primary persona")          
-                for k, v in PERSONA.items(): st.write(f"**{k}** — {v}")           
-            with b2:                                     
-                st.subheader("Empathy map")              
+            b1, b2 = st.columns(2)
+            with b1:
+                st.subheader("Primary persona")
+                for k, v in PERSONA.items(): st.write(f"**{k}** — {v}")
+            with b2:
+                st.subheader("Empathy map")
                 for k, v in EMPATHY_MAP.items(): st.write(f"**{k}** — {v}")
 
-        with tab_web:                                    
-            st.subheader("Harvest a page") 
-            url = st.text_input("Page address", "https://www.lucelec.com/") 
-            if st.button("Fetch page"):                  
-                with st.spinner("Downloading…"): 
-                    res = harvest(url)                   
-                if res["ok"]: st.success("Awaiting approval")
-                else: st.error(res["error"])               
+            st.divider()
+            st.subheader("Other archetypes this bot serves")
+            for persona, empathy in zip(PERSONAS, EMPATHY_MAPS):
+                with st.expander(f"{persona['name']} — {persona['who']}"):
+                    p1, p2 = st.columns(2)
+                    with p1:
+                        st.caption("Persona")
+                        for k, v in persona.items(): st.write(f"**{k}** — {v}")
+                    with p2:
+                        st.caption("Empathy map")
+                        for k, v in empathy.items(): st.write(f"**{k}** — {v}")
 
-        with tab_sources:                                
-            st.subheader("RAG Search Test")
-            probe = st.text_input("Test query", "how much does an ac cost") 
-            for i, h in enumerate(retrieve_chunks(probe, index), 1): 
-                st.markdown(f"**[{i}] {h['source']}** · score {h['score']}")   
-                st.caption(h["text"])                    
+            st.divider()
+            st.subheader("The wardrobe — registers available")
+            st.caption("Every voice TONES/dress() can put on a reply.")
+            for name in TONES: st.write(f"**{name}** — {dress(name, '(sample reply text)')}")
+
+        with tab_web:
+            st.markdown(
+                f"""
+                <section class="lucelec-harvest-hero" aria-labelledby="lucelec-harvest-heading">
+                    <div class="lucelec-harvest-kicker">{html.escape(t("web_scope_caption"))}</div>
+                    <h2 id="lucelec-harvest-heading">{html.escape(t("web_header"))}</h2>
+                    <p class="lucelec-harvest-description">{html.escape(t("web_intro"))}</p>
+                </section>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            pending_rows = list_pending()
+            allowed_count = len(allowed_hosts())
+            delay_value = f"{FETCH_DELAY_SECONDS:g}s"
+            size_value = f"{MAX_PAGE_BYTES / 1_000_000:g} MB"
+            st.markdown(
+                f"""
+                <div class="lucelec-harvest-metrics" aria-label="{html.escape(t("web_limits_header"))}">
+                    <div class="lucelec-harvest-metric"><div class="lucelec-harvest-metric-label">{html.escape(t("web_allowed_domains_metric"))}</div><div class="lucelec-harvest-metric-value">{allowed_count}</div></div>
+                    <div class="lucelec-harvest-metric"><div class="lucelec-harvest-metric-label">{html.escape(t("web_delay_metric"))}</div><div class="lucelec-harvest-metric-value">{html.escape(delay_value)}</div></div>
+                    <div class="lucelec-harvest-metric"><div class="lucelec-harvest-metric-label">{html.escape(t("web_size_metric"))}</div><div class="lucelec-harvest-metric-value">{html.escape(size_value)}</div></div>
+                    <div class="lucelec-harvest-metric"><div class="lucelec-harvest-metric-label">{html.escape(t("web_pending_metric"))}</div><div class="lucelec-harvest-metric-value">{len(pending_rows)}</div></div>
+                </div>
+                <div class="lucelec-harvest-caption">{html.escape(t("web_limits_caption"))}</div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            with st.expander(t("web_advanced_expander"), expanded=False):
+                allowed_host_text = ", ".join(sorted(allowed_hosts())) or "—"
+                st.markdown(
+                    f"""
+                    <div class="lucelec-harvest-card-caption"><strong>{html.escape(t("web_allowlist_label"))}:</strong> {html.escape(allowed_host_text)}</div>
+                    <div class="lucelec-harvest-card-caption"><strong>{html.escape(t("web_delay_label"))}:</strong> {html.escape(delay_value)} · robots.txt may require a longer delay</div>
+                    <div class="lucelec-harvest-card-caption"><strong>{html.escape(t("web_size_label"))}:</strong> {html.escape(size_value)}</div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown(
+                f"""
+                <div class="lucelec-harvest-guidance">
+                    <strong>{html.escape(t("web_guidance_header"))}</strong>
+                    <p>{html.escape(t("web_guidance_body"))}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            st.markdown('<div class="lucelec-harvest-url-panel">', unsafe_allow_html=True)
+            url_col, action_col = st.columns([4, 1.25], gap="small")
+            with url_col:
+                url = st.text_input(
+                    t("web_url_label"),
+                    value=t("web_url_placeholder"),
+                    help=t("web_url_help"),
+                    key="web_harvest_url",
+                )
+            with action_col:
+                st.write("")
+                fetch_clicked = st.button(
+                    t("web_fetch_btn"),
+                    type="primary",
+                    use_container_width=True,
+                    key="web_harvest_fetch",
+                )
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            if fetch_clicked:
+                with st.spinner(t("web_progress")):
+                    res = harvest(url)
+                if res["ok"]:
+                    st.success(t("web_success_title"))
+                    st.caption(t("web_success_body").format(words=res["words"]))
+                else:
+                    st.error(res["error"])
+                    st.caption(t("web_error_hint"))
+                pending_rows = list_pending()
+
+            st.markdown(
+                f"""
+                <div class="lucelec-harvest-section-head">
+                    <h3>{html.escape(t("web_pending_header"))}</h3>
+                    <span class="lucelec-harvest-section-count">{html.escape(t("web_pending_count").format(count=len(pending_rows)))}</span>
+                </div>
+                <div class="lucelec-harvest-card-caption">{html.escape(t("web_review_caption"))}</div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            if not pending_rows:
+                st.markdown(
+                    f"""
+                    <div class="lucelec-harvest-empty">
+                        <strong>{html.escape(t("web_empty_title"))}</strong>
+                        <p>{html.escape(t("web_empty_body"))}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            for row in pending_rows:
+                with st.container(border=True):
+                    st.markdown(
+                        f"""
+                        <div class="lucelec-harvest-item">
+                            <div class="lucelec-harvest-item-title">{html.escape(row["file"])}</div>
+                            <div class="lucelec-harvest-item-meta">{html.escape(t("web_saved_file_label"))} · {html.escape(t("web_word_count").format(count=row["words"]))}</div>
+                            <div class="lucelec-harvest-url" aria-label="{html.escape(t("web_source_label"))}">{html.escape(row["url"])}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    with st.expander(f"{t('web_preview_label')} · {row['file']}", expanded=False):
+                        st.text(row["preview"])
+                    a1, a2, a3 = st.columns([2.4, 1.25, 0.8], gap="small")
+                    initials = a1.text_input(
+                        t("web_reviewer_label"),
+                        key=f"web_initials_{row['file']}",
+                        help=t("web_reviewer_help"),
+                    )
+                    if a2.button(t("web_approve_btn"), key=f"web_approve_{row['file']}", type="primary"):
+                        approve_result = approve_harvest(row["file"], initials)
+                        if approve_result["ok"]:
+                            st.cache_resource.clear()
+                            st.success(f"Approved by {approve_result['by']} — now in the knowledge base.")
+                            st.rerun()
+                        else:
+                            st.error(approve_result["error"])
+                    if a3.button(t("web_reject_btn"), key=f"web_reject_{row['file']}"):
+                        reject_harvest(row["file"])
+                        st.rerun()
+
+        with tab_sources:
+            st.markdown(
+                f"""
+                <section class="lucelec-harvest-hero" aria-labelledby="lucelec-sources-heading">
+                    <div class="lucelec-harvest-kicker">{html.escape(t("sources_header"))}</div>
+                    <h2 id="lucelec-sources-heading">{html.escape(t("sources_header"))}</h2>
+                    <p class="lucelec-harvest-description">{html.escape(t("sources_intro"))}</p>
+                </section>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown('<div class="lucelec-source-test-panel">', unsafe_allow_html=True)
+            probe = st.text_input(
+                t("sources_query_label"),
+                "how much does an ac cost",
+                help=t("sources_query_help"),
+                key="sources_probe",
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            source_hits = retrieve_chunks(probe, index)
+            if source_hits:
+                st.caption(t("sources_result_count").format(count=len(source_hits)))
+                for i, h in enumerate(source_hits, 1):
+                    source_name = html.escape(str(h["source"]))
+                    score = html.escape(str(h["score"]))
+                    passage = html.escape(escape_markdown_dollars(str(h["text"])))
+                    st.markdown(
+                        f"""
+                        <article class="lucelec-source-result" aria-label="{html.escape(t("sources_source_label"))} {i}">
+                            <div class="lucelec-source-result-head">
+                                <span class="lucelec-source-result-source">[{i}] {source_name}</span>
+                                <span class="lucelec-source-result-score">{html.escape(t("sources_score_label"))}: {score}</span>
+                            </div>
+                            <div class="lucelec-source-result-text">{passage}</div>
+                        </article>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.markdown(
+                    f"""
+                    <div class="lucelec-harvest-empty">
+                        <strong>{html.escape(t("sources_empty_title"))}</strong>
+                        <p>{html.escape(t("sources_empty_body"))}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
         with tab_eval:
             st.subheader("Evaluations")
             if st.button("Run eval set"):
                 rows = run_eval(index, user)
-                st.dataframe(rows, use_container_width=True)
+                # st.table, not st.dataframe: a static one-shot report needs
+                # no interactive sorting/scrolling, and st.dataframe renders
+                # through a canvas that CSS injection can't reach — it always
+                # stays light regardless of the dark-mode toggle.
+                st.table(rows)
                 passed = sum(1 for r in rows if r["passed"])
                 st.metric("Passed", f"{passed}/{len(rows)}")
 

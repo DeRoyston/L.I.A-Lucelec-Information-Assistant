@@ -82,10 +82,12 @@ check("paths anchored to file, not cwd",
 sources = {c["source"] for c in chunks}
 check("all three seed docs indexed", len(sources) >= 3, f"sources={sources}")
 
-# The harvested pages must NOT be in the knowledge base.
-check("unapproved harvest is NOT retrievable",
-      not any("new-connections" in s or s == "index.md" for s in sources),
-      f"leaked into KB: {sources}")
+# web-content-new-connections.md and web-index.md were harvested, reviewed,
+# and approved via approve_harvest() (see commits d303fcc/d1fe2a1) — they
+# are legitimate seed docs now, not a leak.
+check("approved harvested docs are retrievable",
+      {"web-content-new-connections.md", "web-index.md"} <= sources,
+      f"sources={sources}")
 
 
 # =====================================================================
@@ -269,11 +271,16 @@ check("no-scheme URL refused", not b.is_allowed_domain("www.lucelec.com/x"))
 
 pending = b.list_pending()
 check("waiting room readable", isinstance(pending, list), str(type(pending)))
-check("harvested pages are pending, not live", len(pending) == 2,
+check("harvested pages are pending, not live", len(pending) == 1,
       f"{[p['file'] for p in pending]}")
 check("pending files carry a source URL",
       all(p["url"].startswith("http") for p in pending),
       str([p["url"] for p in pending]))
+# Whatever is STILL sitting in the waiting room (unapproved) must not have
+# also reached the live index — that would defeat the review gate entirely.
+check("still-pending harvest is NOT retrievable",
+      not any(p["file"] in sources for p in pending),
+      f"leaked into KB: pending={[p['file'] for p in pending]} sources={sources}")
 
 # Approval must require initials.
 res = b.approve_harvest("index.md", "")
@@ -376,9 +383,20 @@ check("sticky_* helpers exist to survive the widget-key GC gap",
       "def sticky_text_input" in src and "def sticky_checkbox" in src and
       "def sticky_selectbox" in src,
       "identity_*/ui_language fields must not rely on a bare widget key surviving across the gate<->Settings gap")
-check("every sticky widget uses a disposable __widget key, not the plain shadow key, for its own Streamlit key=",
-      src.count('key=f"{session_key}__widget"') == 3,
-      "sticky_text_input/checkbox/selectbox should each pass key=f\"{session_key}__widget\"")
+# sticky_selectbox grew an optional key_suffix (2026-08-19): a reused
+# "{session_key}__widget" key survives st.session_state changes but a
+# BaseWeb Select's on-screen label doesn't reliably repaint from an
+# index-only change on that same key — confirmed live with Territory
+# stuck showing "(unknown)" after node_art resolved it to "Domestic" in
+# session_state. key_suffix (a nonce bumped only when code, not the user,
+# changes the value) forces a real remount. sticky_text_input/checkbox
+# don't need this — nothing writes to their session_state programmatically
+# mid-conversation the way node_art does for territory.
+check("every sticky widget's own Streamlit key starts from the disposable __widget key, not the plain shadow key",
+      src.count('key=f"{session_key}__widget"') == 2 and
+      'key=f"{session_key}__widget{key_suffix}"' in src,
+      "sticky_text_input/checkbox should pass key=f\"{session_key}__widget\"; "
+      "sticky_selectbox should pass key=f\"{session_key}__widget{key_suffix}\"")
 check("the language picker also goes through the sticky pattern (same bug, pre-existing, Settings-only)",
       "def render_language_picker" in src and
       "sticky_selectbox(t(\"language_label\")" in src and
@@ -547,10 +565,18 @@ check("chat history redisplay escapes dollar signs before st.markdown",
 check("live streamed reply escapes dollar signs before st.write_stream",
       'st.write_stream(_stream_words(escape_markdown_dollars(out["reply"])))' in app_source,
       "st.write_stream(_stream_words(out[\"reply\"])) is not wrapped with escape_markdown_dollars()")
+# The redesigned Sources tab (2026-08-19) renders passages via st.markdown
+# with unsafe_allow_html=True for its custom card styling, not st.caption —
+# so it wraps h["text"] in BOTH escape_markdown_dollars() (Streamlit LaTeX
+# guard) and html.escape() (needed now that the surrounding markup isn't
+# auto-escaped), instead of the plain st.caption(escape_markdown_dollars(...))
+# pattern the other two call sites still use. Count both patterns.
 caption_escape_count = app_source.count('st.caption(escape_markdown_dollars(h["text"]))')
+html_escape_count = app_source.count('html.escape(escape_markdown_dollars(str(h["text"])))')
+total_escape_count = caption_escape_count + html_escape_count
 check("every source-excerpt caption escapes dollar signs",
-      caption_escape_count >= 3,
-      f"expected at least 3 escaped st.caption(h['text']) call sites, found {caption_escape_count}")
+      total_escape_count >= 3,
+      f"expected at least 3 escaped h['text'] call sites (st.caption or html.escape form), found {total_escape_count}")
 
 # Regression guard: the raw, unescaped reply must still be what's stored in
 # history and what's handed to TTS — only the render call sites should change.
@@ -734,19 +760,34 @@ for lang in ("Spanish", "French", "French Creole (Kwéyòl)"):
           set(b.SOCIAL_FALLBACKS[lang].keys()) == set(b.SOCIAL_FALLBACKS["English"].keys()),
           (set(b.SOCIAL_FALLBACKS["English"].keys()) - set(b.SOCIAL_FALLBACKS[lang].keys())))
 
-with quiet():
+# These three assert the STATIC offline fallback text specifically, so they
+# must force the no-provider path — otherwise, in any environment with a
+# real API key configured (Groq/Gemini here), social_reply() calls the live
+# LLM instead and these become flaky: e.g. asking a live model to reply in
+# "Klingon" gets an in-character Klingon greeting, not the English fallback
+# the test is actually checking for.
+@contextlib.contextmanager
+def offline():
+    original = b.active_chain
+    b.active_chain = lambda: []
+    try:
+        yield
+    finally:
+        b.active_chain = original
+
+with quiet(), offline():
     kweyol_greeting = b.social_reply("hello", b.DEFAULT_REGISTER, language="French Creole (Kwéyòl)")
 check("a Kwéyòl-language greeting gets the Kwéyòl offline fallback, not the English one",
       "Bonjou" in kweyol_greeting["reply"] and "Hello!" not in kweyol_greeting["reply"],
       kweyol_greeting["reply"][:120])
 
-with quiet():
+with quiet(), offline():
     english_greeting = b.social_reply("hello", b.DEFAULT_REGISTER, language="English")
 check("English still gets the original English offline fallback (no regression)",
       "Hello!" in english_greeting["reply"],
       english_greeting["reply"][:120])
 
-with quiet():
+with quiet(), offline():
     unknown_lang_reply = b.social_reply("hello", b.DEFAULT_REGISTER, language="Klingon")
 check("an unrecognized language falls back to English, doesn't crash",
       "Hello!" in unknown_lang_reply["reply"],
