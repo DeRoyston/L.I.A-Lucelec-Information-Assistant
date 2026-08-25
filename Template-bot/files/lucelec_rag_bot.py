@@ -2422,53 +2422,6 @@ def generate_google_tts(text: str, language: str = "English") -> bytes:
     print(f"Google TTS Error: all {len(tlds_to_try)} regional endpoints failed ({tlds_to_try}). Last error: {last_error}")
     return b""
 
-def generate_voicebox_tts(text: str, language: str = "English") -> bytes:
-    """Generate spoken audio using a self-hosted Voicebox instance.
-
-    Voicebox (github.com/jamiepine/voicebox) is a local-first TTS engine —
-    free, runs on your own infra, supports voice cloning. Its /generate API
-    only accepts "en" or "zh" as a `language` value — no French, Spanish, or
-    Kwéyòl option exists server-side. French and Spanish are Latin-script
-    and share enough phonetics with English that they're sent through
-    anyway with the "en" hint (same "closest available approximation"
-    trade-off generate_elevenlabs_tts() already makes for Kwéyòl via its
-    "fr" hint) — pronunciation isn't guaranteed, since Voicebox's model was
-    never trained on either. Kwéyòl still gets refused outright: it has no
-    Latin-script relative in what Voicebox accepts, so there's no
-    reasonable hint left to fall back on.
-    """
-    import streamlit as st
-
-    if language not in ("English", "French", "Spanish"):
-        st.warning("Voicebox only supports English, French, and Spanish — switch engine or language.")
-        return b""
-
-    base_url = os.getenv("VOICEBOX_API_URL", "").strip().rstrip("/")
-    profile_id = os.getenv("VOICEBOX_PROFILE_ID", "").strip()
-
-    if not base_url or not profile_id:
-        st.error("Voicebox Error: VOICEBOX_API_URL and VOICEBOX_PROFILE_ID must be set in .env.")
-        return b""
-
-    try:
-        import requests
-
-        gen_resp = requests.post(
-            f"{base_url}/generate",
-            json={"profile_id": profile_id, "text": text, "language": "en"},
-            timeout=60,
-        )
-        gen_resp.raise_for_status()
-        generation_id = gen_resp.json()["id"]
-
-        audio_resp = requests.get(f"{base_url}/audio/{generation_id}", timeout=60)
-        audio_resp.raise_for_status()
-        return audio_resp.content
-
-    except Exception as e:
-        st.error(f"Voicebox API Error: {e}")
-        return b""
-
 def transcribe_voice_audio(audio_bytes: bytes) -> str:
     """Turn recorded voice audio into text using ElevenLabs Scribe STT."""
     if not audio_bytes:
@@ -5010,12 +4963,10 @@ def streamlit_app():
                 a11y_state["tts"] = st.checkbox(t("tts_checkbox"), value=a11y_state.get("tts", False))
 
                 if a11y_state["tts"]:
-                    tts_engine_options = ["ElevenLabs (Credits)", "Google (Free)", "Voicebox (Local)"]
-                    current_engine = a11y_state.get("tts_engine", "ElevenLabs (Credits)")
                     a11y_state["tts_engine"] = st.radio(
                         t("tts_engine_label"),
-                        tts_engine_options,
-                        index=tts_engine_options.index(current_engine) if current_engine in tts_engine_options else 0
+                        ["ElevenLabs (Credits)", "Google (Free)"],
+                        index=0 if a11y_state.get("tts_engine", "ElevenLabs (Credits)") == "ElevenLabs (Credits)" else 1
                     )
 
                 a11y_state["stt"] = st.checkbox(t("stt_checkbox"), value=a11y_state.get("stt", False))
@@ -5276,8 +5227,6 @@ def streamlit_app():
                             # everything else rather than singling it out.
                             if engine == "ElevenLabs (Credits)":
                                 audio_data = generate_elevenlabs_tts(out["reply"], language=sim_language)
-                            elif engine == "Voicebox (Local)":
-                                audio_data = generate_voicebox_tts(out["reply"], language=sim_language)
                             else:
                                 # FIXED: Passes sim_language to gTTS
                                 audio_data = generate_google_tts(out["reply"], language=sim_language)
