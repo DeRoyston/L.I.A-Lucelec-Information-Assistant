@@ -15,6 +15,7 @@ openai>=1.40
 
 # ── Voice / Audio ─────────────────────────────────────────────────────
 elevenlabs>=1.0.0
+requests>=2.31          # direct HTTP calls to a self-hosted Voicebox instance
 
 # ── Web harvesting (needed if you use the Web harvest tab) ────────────
 beautifulsoup4>=4.12           # much better HTML-to-text than the built-in fallback
