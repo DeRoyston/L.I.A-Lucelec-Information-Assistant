@@ -915,7 +915,7 @@ EMPATHY_MAPS = [
 #   "lambda t: ..." is a tiny function with no name. It takes text t and
 #   returns dressed-up text. TONES["urgent"]("Hello") gives "HELLO ⚡".
 TONES = {                                            # dictionary: mood -> a function
-    "warm":       lambda t: f"{t} 💛",                # the default: friendly, unhurried
+    "warm":       lambda t: t,                        # the default: friendly, unhurried
     "formal":     lambda t: f"Dear customer — {t}",   # for businesses and written records
     "anxious":    lambda t: f"Don't worry, we can figure this out together. {t}",# for the worried homeowner
     "bereaved":   lambda t: f"I'm very sorry for your loss. {t}",   # for an account after a death
